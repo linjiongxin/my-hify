@@ -1,0 +1,565 @@
+# Hify K8s 部署配置
+# 适用场景：50 人内部团队，生产环境
+#
+# 部署步骤：
+# 1. 创建 Namespace: kubectl apply -f k8s-deployment.yaml
+# 2. 配置 Secret: kubectl create secret generic hify-secret \
+#      --from-literal=db-password=xxx \
+#      --from-literal=redis-password=xxx \
+#      --from-literal=openai-key=xxx \
+#      -n hify
+# 3. 检查状态: kubectl get all -n hify
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hify
+  labels:
+    name: hify
+    env: production
+
+---
+# ConfigMap - 非敏感配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hify-config
+  namespace: hify
+data:
+  # 应用配置
+  application.yml: |
+    server:
+      port: 8080
+      tomcat:
+        threads:
+          max: 200
+          min-spare: 10
+        max-connections: 8192
+
+    spring:
+      datasource:
+        url: jdbc:postgresql://postgres:5432/hify
+        username: hify
+        driver-class-name: org.postgresql.Driver
+        hikari:
+          maximum-pool-size: 10
+          minimum-idle: 2
+          connection-timeout: 20000
+      redis:
+        host: redis
+        port: 6379
+        timeout: 5000
+        lettuce:
+          pool:
+            max-active: 20
+            max-idle: 10
+
+    hify:
+      llm:
+        providers:
+          openai:
+            base-url: https://api.openai.com/v1
+            max-concurrent-requests: 20
+            connect-timeout: 5s
+            read-timeout: 60s
+            total-timeout: 90s
+          deepseek:
+            base-url: https://api.deepseek.com/v1
+            max-concurrent-requests: 10
+            connect-timeout: 5s
+            read-timeout: 60s
+            total-timeout: 90s
+          ollama:
+            base-url: http://ollama-service:11434
+            max-concurrent-requests: 5
+            connect-timeout: 2s
+            read-timeout: 300s
+            total-timeout: 600s
+
+---
+# Secret - 敏感信息（部署时需替换）
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hify-secret
+  namespace: hify
+type: Opaque
+stringData:
+  # 数据库密码
+  DB_PASSWORD: "change-me-in-production"
+  # Redis 密码（如启用）
+  REDIS_PASSWORD: ""
+  # LLM API Keys
+  OPENAI_API_KEY: ""
+  DEEPSEEK_API_KEY: ""
+  # JWT 密钥
+  JWT_SECRET: "change-me-to-random-string"
+
+---
+# PostgreSQL PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: hify
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard  # 根据集群调整
+
+---
+# PostgreSQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: hify
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              value: hify
+            - name: POSTGRES_USER
+              value: hify
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hify-secret
+                  key: DB_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - hify
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - hify
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: hify
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+
+---
+# Redis StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: hify
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+              name: redis
+          command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --maxmemory
+            - "384mb"
+            - --maxmemory-policy
+            - allkeys-lru
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: hify
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis
+
+---
+# Hify 后端 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hify-server
+  namespace: hify
+  labels:
+    app: hify-server
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: hify-server
+  template:
+    metadata:
+      labels:
+        app: hify-server
+    spec:
+      containers:
+        - name: hify-server
+          image: hify/hify-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: production
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hify-secret
+                  key: DB_PASSWORD
+            - name: SPRING_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hify-secret
+                  key: REDIS_PASSWORD
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hify-secret
+                  key: OPENAI_API_KEY
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hify-secret
+                  key: DEEPSEEK_API_KEY
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: hify-secret
+                  key: JWT_SECRET
+            - name: JAVA_OPTS
+              value: "-Xmx512m -Xms256m -XX:+UseG1GC"
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: hify-config
+            items:
+              - key: application.yml
+                path: application.yml
+
+---
+# Hify 后端 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: hify-server
+  namespace: hify
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: hify-server
+
+---
+# Hify 前端 Nginx Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hify-web
+  namespace: hify
+  labels:
+    app: hify-web
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: hify-web
+  template:
+    metadata:
+      labels:
+        app: hify-web
+    spec:
+      containers:
+        - name: nginx
+          image: hify/hify-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+---
+# Hify Web Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: hify-web
+  namespace: hify
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: hify-web
+
+---
+# HPA - 自动扩缩容
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hify-server-hpa
+  namespace: hify
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hify-server
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hify-ingress
+  namespace: hify
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    # SSE 长连接支持
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-cache: "off"
+    # 速率限制（可选）
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - hify.example.com  # 替换为实际域名
+      secretName: hify-tls
+  rules:
+    - host: hify.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: hify-server
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hify-web
+                port:
+                  number: 80
+
+---
+# PostgreSQL 备份 CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: hify
+spec:
+  schedule: "0 2 * * *"  # 每天凌晨 2 点
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: postgres:15-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  pg_dump -h postgres -U hify hify | gzip > /backup/hify-$(date +%Y%m%d-%H%M%S).sql.gz
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: hify-secret
+                      key: DB_PASSWORD
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: postgres-backup
+          restartPolicy: OnFailure
+
+---
+# PostgreSQL 备份 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backup
+  namespace: hify
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
