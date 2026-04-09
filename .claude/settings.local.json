@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:dify.ai)",
+      "WebSearch",
+      "Bash(tree -L 4 -d /Users/linjiongxin/IdeaProjects/my-hify/hify-common /Users/linjiongxin/IdeaProjects/my-hify/hify-module-* /Users/linjiongxin/IdeaProjects/my-hify/hify-server)",
+      "Bash(mvn help:effective-pom -q)",
+      "Bash(find . -name pom.xml -o -type d -path */src/main/java/* -o -type d -path */src/test/java/*)",
+      "Bash(docker compose:*)",
+      "Bash(docker run:*)",
+      "Bash(mvn clean:*)",
+      "Bash(java:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker pull:*)",
+      "Bash(docker start:*)",
+      "Bash(ls hify-server/target/*.jar)",
+      "Bash(curl -s http://localhost:8080/api/actuator/health)",
+      "Bash(grep \"\\\\.iml$\")",
+      "Bash(xargs git:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(sudo mkdir:*)",
+      "Bash(docker tag:*)",
+      "Bash(docker rmi:*)",
+      "Bash(docker exec:*)",
+      "Bash(pkill -f \"hify-server\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s http://localhost:8080/api/actuator/health?show-details=always)",
+      "Bash(curl -s http://localhost:8080/api/actuator)",
+      "Bash(curl:*)",
+      "Bash(docker volume:*)"
+    ]
+  }
+}
