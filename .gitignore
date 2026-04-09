@@ -1,1 +1,28 @@
 /.idea/
+*.iml
+*.class
+*.log
+target/
+.claude/
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Local config
+application-local.yml
+application-dev.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Maven
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# H2
+*.h2.db
+*.mv.db

@@ -20,8 +20,7 @@
 - **知识库 + RAG**：支持 TXT/Markdown 文档（Markdown 清洗为纯文本），固定长度分块，向量检索
 - **简版工作流**：JSON 配置，线性执行 + 条件分支，不做可视化拖拽
 - **MCP 工具接入**：Agent 可通过 MCP 协议调用外部工具，动态工具发现
-- **管理控制台**：模型管理、Agent 配置、对话界面、用户权限
-
+- **管理控制台**：模型管理、Agent 配置、对话界面、
 ### 不做什么
 
 - 不做人机协同（HITL）、A/B 测试、复杂 RAG 分块策略
@@ -309,4 +308,75 @@ postgresql_connections_active > 8 # 数据库连接过多
 - **语言级别**: Java 17
 - **构建工具**: Maven
 - **输出目录**: `out/`
+
+---
+
+## 本地开发部署
+
+### 方式一：Docker Compose（推荐）
+
+项目已配置 Docker Compose 一键启动 PostgreSQL + Redis：
+
+```bash
+# 启动数据库（确保 Docker 运行中）
+docker compose up -d
+
+# 查看状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
+
+# 彻底清理（包括数据卷，谨慎使用）
+docker compose down -v
+```
+
+**数据挂载说明：**
+| 服务 | 容器路径 | 本地卷名 | 说明 |
+|------|---------|---------|------|
+| PostgreSQL | `/var/lib/postgresql/data` | `postgres_data` | 业务数据 + pgvector |
+| Redis | `/data` | `redis_data` | 会话 + 缓存 |
+
+**数据库初始化：**
+- 首次启动自动执行 `docs/sql/init/*.sql`
+- 包含：pgvector 扩展、通用触发器函数
+
+### 方式二：本地 H2 内存数据库（快速测试）
+
+无需 Docker，使用 H2 内存数据库 + 本地 Redis：
+
+```bash
+# 启动 Redis（如果有）
+docker run -d --name hify-redis -p 6379:6379 redis:latest
+
+# 启动应用（使用 local 配置）
+cd hify-server
+mvn spring-boot:run -Dspring-boot.run.profiles=local
+
+# 或运行 jar
+java -jar target/hify-server-*.jar --spring.profiles.active=local
+```
+
+**H2 控制台：** http://localhost:8080/api/h2-console
+- JDBC URL: `jdbc:h2:mem:hify`
+- 用户名: `sa`
+- 密码: （留空）
+
+### 启动应用
+
+```bash
+# 1. 编译
+cd /Users/linjiongxin/IdeaProjects/my-hify
+mvn clean install -DskipTests
+
+# 2. 启动（开发环境使用 local 配置）
+cd hify-server
+mvn spring-boot:run -Dspring-boot.run.profiles=local
+
+# 3. 验证
+open http://localhost:8080/api/actuator/health
+```
 

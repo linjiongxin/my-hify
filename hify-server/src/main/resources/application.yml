@@ -1,0 +1,139 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  # SSE 长连接支持
+  tomcat:
+    connection-timeout: 600000
+    threads:
+      max: 200
+      min-spare: 10
+
+spring:
+  application:
+    name: hify-server
+
+  # 数据源配置
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/hify?useUnicode=true&characterEncoding=utf-8&sslmode=disable
+    username: postgres
+    password: postgres
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      connection-timeout: 20000
+      pool-name: HifyHikariCP
+
+  # Redis 配置
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      database: 0
+      timeout: 60000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: 10000ms
+
+  # Jackson 配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+      write-bigdecimal-as-plain: true
+    deserialization:
+      fail-on-unknown-properties: false
+
+  # 文件上传配置
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+# MyBatis Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.hify.**.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    default-executor-type: simple
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: true
+      logic-not-delete-value: false
+      id-type: assign_id
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.hify: DEBUG
+    org.springframework.web: INFO
+    org.springframework.jdbc: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{X-Request-ID}] %logger{36} - %msg%n"
+  file:
+    name: logs/hify-server.log
+    max-history: 30
+    max-size: 100MB
+
+# Actuator 监控配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+    metrics:
+      enabled: true
+
+---
+# 开发环境配置
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+logging:
+  level:
+    com.hify: DEBUG
+    org.springframework.jdbc: DEBUG
+    com.baomidou.mybatisplus: DEBUG
+
+---
+# 生产环境配置
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+
+logging:
+  level:
+    root: WARN
+    com.hify: INFO
+    org.springframework.web: WARN
+  file:
+    name: /var/log/hify/hify-server.log
