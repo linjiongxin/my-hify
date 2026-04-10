@@ -34,7 +34,10 @@
       "Bash(git --version)",
       "Bash(sw_vers)",
       "Bash(brew update:*)",
-      "Bash(brew install:*)"
+      "Bash(brew install:*)",
+      "Skill(api-generating)",
+      "Bash(python3:*)",
+      "Bash(git reset:*)"
     ]
   }
 }
