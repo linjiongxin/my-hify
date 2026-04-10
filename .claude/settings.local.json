@@ -30,7 +30,11 @@
       "Bash(curl -s http://localhost:8080/api/actuator/health?show-details=always)",
       "Bash(curl -s http://localhost:8080/api/actuator)",
       "Bash(curl:*)",
-      "Bash(docker volume:*)"
+      "Bash(docker volume:*)",
+      "Bash(git --version)",
+      "Bash(sw_vers)",
+      "Bash(brew update:*)",
+      "Bash(brew install:*)"
     ]
   }
 }
