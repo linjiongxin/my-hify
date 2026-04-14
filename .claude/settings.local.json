@@ -71,7 +71,8 @@
       "Bash(pkill -f \"hify-server.*spring-boot:run\")",
       "Bash(pkill -f \"hify-server.*jar\")",
       "Bash(mvn:*)",
-      "Bash(htpasswd -bnBC 10 \"\" admin123)"
+      "Bash(htpasswd -bnBC 10 \"\" admin123)",
+      "Bash(sh stop.sh)"
     ]
   }
 }
