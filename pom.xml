@@ -35,18 +35,27 @@
         <spring-boot.version>3.2.0</spring-boot.version>
 
         <!-- Database -->
-        <mybatis-plus.version>3.5.5</mybatis-plus.version>
+        <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <postgresql.version>42.7.1</postgresql.version>
         <pgvector.version>0.1.4</pgvector.version>
 
         <!-- Cache -->
         <redis.version>3.2.0</redis.version>
+        <redisson.version>3.25.0</redisson.version>
 
         <!-- HTTP Client -->
         <okhttp.version>4.12.0</okhttp.version>
+        <okhttp-sse.version>4.12.0</okhttp-sse.version>
 
         <!-- Resilience -->
         <resilience4j.version>2.1.0</resilience4j.version>
+
+        <!-- API Docs -->
+        <springdoc.version>2.3.0</springdoc.version>
+        <knife4j.version>4.4.0</knife4j.version>
+
+        <!-- JWT -->
+        <jjwt.version>0.12.3</jjwt.version>
 
         <!-- JSON -->
         <jackson.version>2.16.0</jackson.version>
@@ -117,8 +126,13 @@
             <!-- MyBatis Plus -->
             <dependency>
                 <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-boot-starter</artifactId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mybatis</groupId>
+                <artifactId>mybatis-spring</artifactId>
+                <version>3.0.3</version>
             </dependency>
 
             <!-- PostgreSQL -->
@@ -133,11 +147,23 @@
                 <version>${pgvector.version}</version>
             </dependency>
 
+            <!-- Redisson -->
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson-spring-boot-starter</artifactId>
+                <version>${redisson.version}</version>
+            </dependency>
+
             <!-- OkHttp -->
             <dependency>
                 <groupId>com.squareup.okhttp3</groupId>
                 <artifactId>okhttp</artifactId>
                 <version>${okhttp.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp-sse</artifactId>
+                <version>${okhttp-sse.version}</version>
             </dependency>
 
             <!-- Resilience4j -->
@@ -145,6 +171,37 @@
                 <groupId>io.github.resilience4j</groupId>
                 <artifactId>resilience4j-spring-boot3</artifactId>
                 <version>${resilience4j.version}</version>
+            </dependency>
+
+            <!-- API Docs -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.xiaoymin</groupId>
+                <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+                <version>${knife4j.version}</version>
+            </dependency>
+
+            <!-- JWT -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
+                <scope>runtime</scope>
             </dependency>
 
             <!-- MapStruct -->

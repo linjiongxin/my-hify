@@ -66,6 +66,13 @@ public class PageResult<T> implements Serializable {
     }
 
     /**
+     * 从 MyBatis-Plus Page 构建分页结果
+     */
+    public static <T> PageResult<T> of(com.baomidou.mybatisplus.core.metadata.IPage<T> page) {
+        return new PageResult<>(page.getRecords(), page.getCurrent(), page.getSize(), page.getTotal());
+    }
+
+    /**
      * 构建空分页结果
      */
     public static <T> PageResult<T> empty(Long pageNum, Long pageSize) {

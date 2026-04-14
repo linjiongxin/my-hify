@@ -55,4 +55,18 @@ public class PageParam implements Serializable {
         return (getPageNum() - 1) * getPageSize();
     }
 
+    /**
+     * 转换为 MyBatis-Plus Page 对象
+     */
+    public com.baomidou.mybatisplus.extension.plugins.pagination.Page<Object> toPage() {
+        return new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(getPageNum(), getPageSize());
+    }
+
+    /**
+     * 转换为带类型的 MyBatis-Plus Page 对象
+     */
+    public <T> com.baomidou.mybatisplus.extension.plugins.pagination.Page<T> toPage(Class<T> clazz) {
+        return new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(getPageNum(), getPageSize());
+    }
+
 }

@@ -33,7 +33,7 @@ spring:
     redis:
       host: localhost
       port: 6379
-      password:
+      password: hify123
       database: 0
       timeout: 60000
       lettuce:
@@ -42,6 +42,12 @@ spring:
           max-idle: 8
           min-idle: 0
           max-wait: 10000ms
+      redisson:
+        config: |
+          singleServerConfig:
+            address: "redis://${spring.data.redis.host:localhost}:${spring.data.redis.port:6379}"
+            database: ${spring.data.redis.database:0}
+            password: "${spring.data.redis.password:}"
 
   # Jackson 配置
   jackson:
@@ -89,6 +95,22 @@ logging:
     name: logs/hify-server.log
     max-history: 30
     max-size: 100MB
+
+# SpringDoc 配置
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  show-actuator: true
+
+# Knife4j 增强配置
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
 
 # Actuator 监控配置
 management:

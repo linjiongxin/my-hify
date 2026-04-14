@@ -1,6 +1,11 @@
 package com.hify.common.web.config;
 
+import com.hify.common.web.filter.TraceIdFilter;
+import com.hify.common.web.security.JwtAuthenticationFilter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -12,7 +17,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 @Slf4j
 @Configuration
+@RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
+
+    private final TraceIdFilter traceIdFilter;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     /**
      * 跨域配置
@@ -34,6 +43,32 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .allowCredentials(true)
                 // 预检请求缓存时间
                 .maxAge(3600);
+    }
+
+    /**
+     * 注册 TraceID 过滤器
+     */
+    @Bean
+    public FilterRegistrationBean<TraceIdFilter> traceIdFilterRegistration() {
+        FilterRegistrationBean<TraceIdFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(traceIdFilter);
+        registration.addUrlPatterns("/*");
+        registration.setOrder(0);
+        log.info("注册 TraceID 过滤器");
+        return registration;
+    }
+
+    /**
+     * 注册 JWT 过滤器
+     */
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration() {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(jwtAuthenticationFilter);
+        registration.addUrlPatterns("/*");
+        registration.setOrder(1);
+        log.info("注册 JWT 认证过滤器");
+        return registration;
     }
 
 }

@@ -1,0 +1,448 @@
+-- ========================================
+-- Hify 数据库初始化脚本（PostgreSQL）
+-- ========================================
+
+-- 1. 启用 pgvector 扩展
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2. 创建自动更新触发器函数
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ========================================
+-- 系统模块（前缀: sys_）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS sys_user (
+    id BIGINT PRIMARY KEY,
+    username VARCHAR(32) NOT NULL UNIQUE,
+    password VARCHAR(128) NOT NULL,
+    nickname VARCHAR(32),
+    email VARCHAR(64),
+    avatar VARCHAR(256),
+    status SMALLINT DEFAULT 1,
+    last_login_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_sys_user_updated_at
+    BEFORE UPDATE ON sys_user
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_sys_user_status ON sys_user(status);
+
+-- ========================================
+-- 模型模块（前缀: model_）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS model_provider (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL,
+    code VARCHAR(32) NOT NULL,
+    api_base_url VARCHAR(256) NOT NULL,
+    api_key_required BOOLEAN DEFAULT TRUE,
+    enabled BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_model_provider_updated_at
+    BEFORE UPDATE ON model_provider
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE UNIQUE INDEX uk_model_provider_code ON model_provider(code) WHERE deleted = FALSE;
+
+CREATE TABLE IF NOT EXISTS model (
+    id BIGINT PRIMARY KEY,
+    provider_id BIGINT NOT NULL,
+    name VARCHAR(64) NOT NULL,
+    model_id VARCHAR(64) NOT NULL,
+    max_tokens INT DEFAULT 4096,
+    temperature_min DECIMAL(3,2) DEFAULT 0.0,
+    temperature_max DECIMAL(3,2) DEFAULT 2.0,
+    enabled BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_model_updated_at
+    BEFORE UPDATE ON model
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_model_provider_id ON model(provider_id);
+CREATE UNIQUE INDEX uk_model_model_id ON model(model_id) WHERE deleted = FALSE;
+
+CREATE TABLE IF NOT EXISTS model_provider_config (
+    id BIGINT PRIMARY KEY,
+    provider_id BIGINT NOT NULL,
+    api_key VARCHAR(512),
+    api_base_url VARCHAR(256),
+    config_json JSONB,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_model_provider_config_updated_at
+    BEFORE UPDATE ON model_provider_config
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_model_provider_config_provider_id ON model_provider_config(provider_id);
+
+-- ========================================
+-- Agent 模块（前缀: agent_）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS agent (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL,
+    description TEXT,
+    model_id VARCHAR(64) NOT NULL,
+    system_prompt TEXT,
+    temperature DECIMAL(3,2) DEFAULT 0.7,
+    max_tokens INT DEFAULT 2048,
+    top_p DECIMAL(3,2) DEFAULT 1.0,
+    welcome_message TEXT,
+    tools_json JSONB,
+    mcp_servers_json JSONB,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_agent_updated_at
+    BEFORE UPDATE ON agent
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_agent_model_id ON agent(model_id);
+CREATE INDEX idx_agent_enabled ON agent(enabled);
+
+CREATE TABLE IF NOT EXISTS agent_tool (
+    id BIGINT PRIMARY KEY,
+    agent_id BIGINT NOT NULL,
+    tool_name VARCHAR(64) NOT NULL,
+    tool_type VARCHAR(32) NOT NULL,
+    config_json JSONB,
+    enabled BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_agent_tool_updated_at
+    BEFORE UPDATE ON agent_tool
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_agent_tool_agent_id ON agent_tool(agent_id);
+
+-- ========================================
+-- 对话模块（前缀: chat_）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS chat_session (
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    agent_id BIGINT,
+    title VARCHAR(128),
+    model_id VARCHAR(64),
+    status VARCHAR(16) DEFAULT 'active',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_chat_session_updated_at
+    BEFORE UPDATE ON chat_session
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_chat_session_user_id ON chat_session(user_id);
+CREATE INDEX idx_chat_session_agent_id ON chat_session(agent_id);
+CREATE INDEX idx_chat_session_created_at ON chat_session(created_at);
+
+CREATE TABLE IF NOT EXISTS chat_message (
+    id BIGINT PRIMARY KEY,
+    session_id BIGINT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    content TEXT,
+    tool_calls_json JSONB,
+    tool_call_id VARCHAR(64),
+    usage_json JSONB,
+    model_id VARCHAR(64),
+    status VARCHAR(16) DEFAULT 'completed',
+    error_msg TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_chat_message_updated_at
+    BEFORE UPDATE ON chat_message
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_chat_message_session_id ON chat_message(session_id);
+CREATE INDEX idx_chat_message_created_at ON chat_message(created_at);
+
+-- ========================================
+-- RAG 模块（前缀: rag_）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS knowledge_base (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL,
+    description TEXT,
+    embedding_model VARCHAR(64),
+    chunk_size INT DEFAULT 500,
+    chunk_overlap INT DEFAULT 50,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_knowledge_base_updated_at
+    BEFORE UPDATE ON knowledge_base
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_knowledge_base_enabled ON knowledge_base(enabled);
+
+CREATE TABLE IF NOT EXISTS knowledge_document (
+    id BIGINT PRIMARY KEY,
+    kb_id BIGINT NOT NULL,
+    file_name VARCHAR(256) NOT NULL,
+    file_path VARCHAR(512),
+    file_size BIGINT,
+    file_type VARCHAR(32),
+    content TEXT,
+    status VARCHAR(16) DEFAULT 'pending',
+    error_msg TEXT,
+    chunk_count INT DEFAULT 0,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_knowledge_document_updated_at
+    BEFORE UPDATE ON knowledge_document
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_knowledge_document_kb_id ON knowledge_document(kb_id);
+CREATE INDEX idx_knowledge_document_status ON knowledge_document(status);
+
+CREATE TABLE IF NOT EXISTS document_chunk (
+    id BIGINT PRIMARY KEY,
+    kb_id BIGINT NOT NULL,
+    document_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    embedding VECTOR(1536),
+    chunk_index INT DEFAULT 0,
+    meta_json JSONB,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_document_chunk_updated_at
+    BEFORE UPDATE ON document_chunk
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_document_chunk_kb_id ON document_chunk(kb_id);
+CREATE INDEX idx_document_chunk_document_id ON document_chunk(document_id);
+
+-- 向量索引（ivfflat，适合 < 100 万数据量）
+CREATE INDEX vec_document_chunk_embedding_ivfflat
+    ON document_chunk
+    USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
+
+-- ========================================
+-- 工作流模块（前缀: workflow_）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS workflow_definition (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL,
+    description TEXT,
+    agent_id BIGINT,
+    nodes_json JSONB NOT NULL,
+    edges_json JSONB NOT NULL,
+    variables_json JSONB,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_workflow_definition_updated_at
+    BEFORE UPDATE ON workflow_definition
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_workflow_definition_agent_id ON workflow_definition(agent_id);
+
+CREATE TABLE IF NOT EXISTS workflow_execution (
+    id BIGINT PRIMARY KEY,
+    workflow_id BIGINT NOT NULL,
+    status VARCHAR(16) DEFAULT 'running',
+    input_json JSONB,
+    output_json JSONB,
+    error_msg TEXT,
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_workflow_execution_updated_at
+    BEFORE UPDATE ON workflow_execution
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_workflow_execution_workflow_id ON workflow_execution(workflow_id);
+CREATE INDEX idx_workflow_execution_status ON workflow_execution(status);
+CREATE INDEX idx_workflow_execution_started_at ON workflow_execution(started_at);
+
+CREATE TABLE IF NOT EXISTS workflow_node_execution (
+    id BIGINT PRIMARY KEY,
+    execution_id BIGINT NOT NULL,
+    node_id VARCHAR(64) NOT NULL,
+    node_type VARCHAR(32) NOT NULL,
+    status VARCHAR(16) DEFAULT 'running',
+    input_json JSONB,
+    output_json JSONB,
+    error_msg TEXT,
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_workflow_node_execution_updated_at
+    BEFORE UPDATE ON workflow_node_execution
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_workflow_node_execution_execution_id ON workflow_node_execution(execution_id);
+CREATE INDEX idx_workflow_node_execution_node_id ON workflow_node_execution(node_id);
+
+-- ========================================
+-- MCP 模块（前缀: mcp_）
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS mcp_server (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL,
+    code VARCHAR(32) NOT NULL UNIQUE,
+    transport_type VARCHAR(16) NOT NULL,
+    base_url VARCHAR(256),
+    command VARCHAR(256),
+    args_json JSONB,
+    env_json JSONB,
+    enabled BOOLEAN DEFAULT TRUE,
+    status VARCHAR(16) DEFAULT 'active',
+    last_heartbeat_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_mcp_server_updated_at
+    BEFORE UPDATE ON mcp_server
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_mcp_server_status ON mcp_server(status);
+
+CREATE TABLE IF NOT EXISTS mcp_tool (
+    id BIGINT PRIMARY KEY,
+    server_id BIGINT NOT NULL,
+    name VARCHAR(64) NOT NULL,
+    description TEXT,
+    schema_json JSONB NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_mcp_tool_updated_at
+    BEFORE UPDATE ON mcp_tool
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_mcp_tool_server_id ON mcp_tool(server_id);
+
+-- ========================================
+-- 初始数据
+-- ========================================
+
+-- 管理员用户（密码: admin123，生产环境必须修改）
+INSERT INTO sys_user (id, username, password, nickname, email, status)
+VALUES (1, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '管理员', 'admin@hify.local', 1)
+ON CONFLICT (username) DO NOTHING;
+
+-- 模型提供商
+INSERT INTO model_provider (id, name, code, api_base_url, api_key_required, enabled, sort_order)
+VALUES
+(1, 'OpenAI', 'openai', 'https://api.openai.com/v1', true, true, 1),
+(2, 'DeepSeek', 'deepseek', 'https://api.deepseek.com/v1', true, true, 2),
+(3, 'Ollama', 'ollama', 'http://localhost:11434', false, true, 99);
+
+-- 模型
+INSERT INTO model (id, provider_id, name, model_id, max_tokens, enabled)
+VALUES
+(1, 1, 'GPT-4o', 'gpt-4o', 8192, true),
+(2, 1, 'GPT-4o Mini', 'gpt-4o-mini', 8192, true),
+(3, 1, 'GPT-3.5 Turbo', 'gpt-3.5-turbo', 4096, true),
+(4, 2, 'DeepSeek Chat', 'deepseek-chat', 8192, true),
+(5, 2, 'DeepSeek Coder', 'deepseek-coder', 8192, true),
+(6, 3, 'Llama 2', 'llama2', 4096, true);
+
+-- 验证安装
+SELECT 'pgvector version: ' || extversion AS info
+FROM pg_extension
+WHERE extname = 'vector';

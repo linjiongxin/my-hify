@@ -1,18 +1,20 @@
 services:
   postgres:
-    # 如需 pgvector，网络恢复后可切换: pgvector/pgvector:pg15
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: hify-postgres
     environment:
       POSTGRES_DB: hify
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docs/sql/init:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
+    command: postgres -c timezone=Asia/Shanghai
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -22,12 +24,13 @@ services:
   redis:
     image: m.daocloud.io/docker.io/redis:7-alpine
     container_name: hify-redis
+    command: redis-server --requirepass hify123
     volumes:
       - redis_data:/data
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "hify123", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
