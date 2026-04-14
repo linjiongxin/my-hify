@@ -2,6 +2,7 @@ package com.hify.model.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
@@ -16,6 +17,7 @@ public class ModelProviderCreateRequest {
     private String name;
 
     @NotBlank(message = "代码不能为空")
+    @Pattern(regexp = "^[a-z0-9_]+$", message = "代码只能包含小写字母、数字和下划线")
     private String code;
 
     @NotBlank(message = "API 基础地址不能为空")

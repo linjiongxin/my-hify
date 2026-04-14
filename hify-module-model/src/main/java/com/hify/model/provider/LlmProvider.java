@@ -25,11 +25,15 @@ public interface LlmProvider {
 
     /**
      * 非流式对话
+     *
+     * @param providerCode 提供商代码（由上层解析后传入）
      */
-    LlmChatResponse chat(String modelId, LlmChatRequest request);
+    LlmChatResponse chat(String modelId, String providerCode, LlmChatRequest request);
 
     /**
      * 流式对话
+     *
+     * @param providerCode 提供商代码（由上层解析后传入）
      */
-    void chatStream(String modelId, LlmChatRequest request, Consumer<LlmStreamChunk> callback);
+    void chatStream(String modelId, String providerCode, LlmChatRequest request, Consumer<LlmStreamChunk> callback);
 }

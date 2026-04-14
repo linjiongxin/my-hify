@@ -1,5 +1,5 @@
 ---
-description: 审查代码质量、架构规范、Bug 和改进点
+description: 审查代码质量、架构规范、Bug 和改进点，当用户说review代码，检查代码时执行
 argument-hint: [可选：文件路径]
 disable-model-invocation: true
 allowed-tools: Read, Grep, Glob, Bash(git diff:*)

@@ -15,6 +15,7 @@ import com.hify.model.service.ModelService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.function.Consumer;
 
@@ -26,6 +27,7 @@ import java.util.function.Consumer;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional(rollbackFor = Exception.class)
 public class LlmGatewayServiceImpl implements LlmGatewayService {
 
     private final ModelService modelService;
@@ -34,6 +36,7 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
     private final LlmProviderSemaphoreManager semaphoreManager;
 
     @Override
+    @Transactional(readOnly = true)
     public LlmChatResponse chat(String modelId, LlmChatRequest request) {
         Model model = getModel(modelId);
         ModelProvider provider = modelProviderService.getById(model.getProviderId());
@@ -47,7 +50,7 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
         long start = System.currentTimeMillis();
         try {
             semaphoreManager.acquire(providerCode);
-            LlmChatResponse response = llmProvider.chat(modelId, request);
+            LlmChatResponse response = llmProvider.chat(modelId, providerCode, request);
             log.debug("LLM 调用完成, modelId={}, provider={}, duration={}ms",
                     modelId, providerCode, System.currentTimeMillis() - start);
             return response;
@@ -71,20 +74,28 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
         LlmProvider llmProvider = providerFactory.getProvider(providerCode);
 
         long start = System.currentTimeMillis();
+        java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean(false);
+        Runnable doRelease = () -> {
+            if (released.compareAndSet(false, true)) {
+                semaphoreManager.release(providerCode);
+            }
+        };
+
         try {
             semaphoreManager.acquire(providerCode);
-            llmProvider.chatStream(modelId, request, chunk -> {
+            llmProvider.chatStream(modelId, providerCode, request, chunk -> {
                 callback.accept(chunk);
                 if (Boolean.TRUE.equals(chunk.getFinish())) {
-                    semaphoreManager.release(providerCode);
+                    doRelease.run();
                     log.debug("LLM 流式调用完成, modelId={}, provider={}, duration={}ms",
                             modelId, providerCode, System.currentTimeMillis() - start);
                 }
             });
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            semaphoreManager.release(providerCode);
             throw new RuntimeException("获取 LLM 调用许可被中断", e);
+        } finally {
+            doRelease.run();
         }
     }
 

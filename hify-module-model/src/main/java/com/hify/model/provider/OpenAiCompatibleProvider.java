@@ -35,17 +35,29 @@ import java.util.function.Consumer;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class OpenAiCompatibleProvider implements LlmProvider {
 
     private final ObjectMapper objectMapper;
     private final LlmGatewayProperties properties;
+    private final OkHttpClient baseClient;
+
+    public OpenAiCompatibleProvider(ObjectMapper objectMapper, LlmGatewayProperties properties) {
+        this.objectMapper = objectMapper;
+        this.properties = properties;
+        this.baseClient = new OkHttpClient.Builder()
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .connectionPool(new okhttp3.ConnectionPool(200, 5, TimeUnit.MINUTES))
+                .build();
+    }
 
     private OkHttpClient getClient(boolean isStream) {
-        OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(isStream ? 120 : 60, TimeUnit.SECONDS);
-        return builder.build();
+        if (isStream) {
+            return baseClient.newBuilder()
+                    .readTimeout(120, TimeUnit.SECONDS)
+                    .build();
+        }
+        return baseClient;
     }
 
     @Override
@@ -60,9 +72,9 @@ public class OpenAiCompatibleProvider implements LlmProvider {
     }
 
     @Override
-    public LlmChatResponse chat(String modelId, LlmChatRequest request) {
-        String apiUrl = resolveApiUrl(request) + "/chat/completions";
-        String apiKey = resolveApiKey(request);
+    public LlmChatResponse chat(String modelId, String providerCode, LlmChatRequest request) {
+        String apiUrl = resolveApiUrl(providerCode, request) + "/chat/completions";
+        String apiKey = resolveApiKey(providerCode, request);
         String jsonBody = buildRequestBody(modelId, request, false);
 
         Request httpRequest = new Request.Builder()
@@ -73,19 +85,23 @@ public class OpenAiCompatibleProvider implements LlmProvider {
                 .build();
 
         try (Response response = getClient(false).newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new RuntimeException("LLM API 调用失败: " + response.code() + ", body=" + (response.body() != null ? response.body().string() : ""));
+            String bodyString = null;
+            if (response.body() != null) {
+                bodyString = response.body().string();
             }
-            return parseChatResponse(response.body() != null ? response.body().string() : "{}");
+            if (!response.isSuccessful()) {
+                throw new RuntimeException("LLM API 调用失败: " + response.code() + ", body=" + (bodyString != null ? bodyString : ""));
+            }
+            return parseChatResponse(bodyString != null ? bodyString : "{}");
         } catch (IOException e) {
             throw new RuntimeException("LLM API 请求异常", e);
         }
     }
 
     @Override
-    public void chatStream(String modelId, LlmChatRequest request, Consumer<LlmStreamChunk> callback) {
-        String apiUrl = resolveApiUrl(request) + "/chat/completions";
-        String apiKey = resolveApiKey(request);
+    public void chatStream(String modelId, String providerCode, LlmChatRequest request, Consumer<LlmStreamChunk> callback) {
+        String apiUrl = resolveApiUrl(providerCode, request) + "/chat/completions";
+        String apiKey = resolveApiKey(providerCode, request);
         String jsonBody = buildRequestBody(modelId, request, true);
 
         Request httpRequest = new Request.Builder()
@@ -123,9 +139,11 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         });
     }
 
-    private String resolveApiUrl(LlmChatRequest request) {
-        // 优先从请求扩展参数中读取，否则使用默认配置
-        String providerCode = getProviderCode(request);
+    private String resolveApiUrl(String providerCode, LlmChatRequest request) {
+        // 优先从请求扩展参数中读取，否则使用配置
+        if (request != null && request.getExtra() != null && request.getExtra().get("apiBaseUrl") != null) {
+            return request.getExtra().get("apiBaseUrl");
+        }
         LlmGatewayProperties.ProviderConfig config = properties.getProviders().get(providerCode);
         if (config != null && config.getApiBaseUrl() != null) {
             return config.getApiBaseUrl();
@@ -133,23 +151,15 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         return "https://api.openai.com/v1";
     }
 
-    private String resolveApiKey(LlmChatRequest request) {
-        String providerCode = getProviderCode(request);
+    private String resolveApiKey(String providerCode, LlmChatRequest request) {
+        if (request != null && request.getExtra() != null && request.getExtra().get("apiKey") != null) {
+            return request.getExtra().get("apiKey");
+        }
         LlmGatewayProperties.ProviderConfig config = properties.getProviders().get(providerCode);
         if (config != null && config.getApiKey() != null) {
             return config.getApiKey();
         }
         return "";
-    }
-
-    private String getProviderCode(LlmChatRequest request) {
-        if (request != null && request.getExtra() != null) {
-            String code = request.getExtra().get("providerCode");
-            if (code != null) {
-                return code;
-            }
-        }
-        return "openai";
     }
 
     private String buildRequestBody(String modelId, LlmChatRequest request, boolean stream) {
