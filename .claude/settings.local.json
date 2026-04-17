@@ -72,7 +72,13 @@
       "Bash(pkill -f \"hify-server.*jar\")",
       "Bash(mvn:*)",
       "Bash(htpasswd -bnBC 10 \"\" admin123)",
-      "Bash(sh stop.sh)"
+      "Bash(sh stop.sh)",
+      "WebFetch(domain:localhost)",
+      "Bash(npx playwright-core:*)",
+      "Bash(npm init:*)",
+      "Bash(node /tmp/check-btn.cjs)",
+      "Bash(git rm:*)",
+      "Bash(grep '\\\\.pid$')"
     ]
   }
 }
