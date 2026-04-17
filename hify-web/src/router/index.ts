@@ -12,7 +12,7 @@ const router = createRouter({
     {
       path: '/models',
       name: 'models',
-      component: () => import('../views/provider/ProviderList.vue'),
+      component: () => import('../views/model/ModelList.vue'),
     },
     {
       path: '/providers',

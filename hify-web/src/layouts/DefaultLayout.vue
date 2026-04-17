@@ -16,8 +16,8 @@ const menuItems = [
 
 const breadcrumbMap: Record<string, string> = {
   home: '首页',
-  models: '模型管理',
-  providers: '模型管理',
+  models: '模型配置',
+  providers: '模型提供商',
   agents: 'Agent 管理',
   knowledge: '知识库',
   workflows: '工作流',
