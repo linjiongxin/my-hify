@@ -25,3 +25,8 @@ Thumbs.db
 # H2
 *.h2.db
 *.mv.db
+
+# Runtime PID files
+*.pid
+hify-server/*.pid
+hify-web/*.pid

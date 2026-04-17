@@ -31,7 +31,7 @@ cleanup() {
         kill "${FRONTEND_PID}" 2>/dev/null || true
         wait "${FRONTEND_PID}" 2>/dev/null || true
     fi
-    rm -f "${PROJECT_ROOT}/hify-server/hify-server.pid" "${PROJECT_ROOT}/hify-web/hify-web.pid"
+    :
 }
 trap cleanup EXIT INT TERM
 
@@ -102,7 +102,6 @@ log_info "启动后端服务 (profile: local)..."
 cd "${PROJECT_ROOT}/hify-server"
 nohup java -jar "${SERVER_JAR}" --spring.profiles.active=local > "${PROJECT_ROOT}/hify-server/backend.log" 2>&1 &
 BACKEND_PID=$!
-echo "${BACKEND_PID}" > "${PROJECT_ROOT}/hify-server/hify-server.pid"
 log_info "后端进程 PID: ${BACKEND_PID}"
 
 # 4. 轮询等待健康检查
@@ -132,7 +131,6 @@ log_info "启动前端开发服务器..."
 cd "${PROJECT_ROOT}/hify-web"
 nohup npm run dev > "${PROJECT_ROOT}/hify-web/frontend.log" 2>&1 &
 FRONTEND_PID=$!
-echo "${FRONTEND_PID}" > "${PROJECT_ROOT}/hify-web/hify-web.pid"
 log_info "前端进程 PID: ${FRONTEND_PID}"
 
 log_info "所有服务已启动"

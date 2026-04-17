@@ -52,28 +52,13 @@ stop_by_pid() {
 
 stop_process() {
     local name="$1"
-    local pid_file="$2"
-    local fallback_cmd="$3"
+    local fallback_cmd="$2"
 
-    local pid=""
-    if [[ -f "${pid_file}" ]]; then
-        pid="$(cat "${pid_file}")"
-    fi
-
-    if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
-        stop_by_pid "${name}" "${pid}"
-        rm -f "${pid_file}"
-        return 0
-    fi
-
-    # PID 文件无效，尝试兜底查找
-    log_warn "PID 文件无效，尝试通过进程名/端口查找 ${name}..."
     local found_pids
     found_pids="$(eval "${fallback_cmd}" 2>/dev/null || true)"
 
     if [[ -z "${found_pids}" ]]; then
         log_warn "未找到运行中的 ${name} 进程，跳过"
-        rm -f "${pid_file}"
         return 0
     fi
 
@@ -81,18 +66,12 @@ stop_process() {
         [[ -n "${p}" ]] || continue
         stop_by_pid "${name}" "${p}"
     done <<< "${found_pids}"
-
-    rm -f "${pid_file}"
 }
 
-# 停止后端：优先 PID 文件，兜底按 jar 包进程名
-stop_process "后端" \
-    "${PROJECT_ROOT}/hify-server/hify-server.pid" \
-    "pgrep -f 'hify-server.*jar'"
+# 停止后端：按 jar 包进程名查找
+stop_process "后端" "pgrep -f 'hify-server.*jar'"
 
-# 停止前端：优先 PID 文件，兜底按 vite 进程名
-stop_process "前端" \
-    "${PROJECT_ROOT}/hify-web/hify-web.pid" \
-    "pgrep -f 'vite'"
+# 停止前端：按 vite 进程名查找
+stop_process "前端" "pgrep -f 'vite'"
 
 log_info "所有服务已停止"
