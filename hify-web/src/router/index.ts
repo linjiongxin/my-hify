@@ -12,7 +12,12 @@ const router = createRouter({
     {
       path: '/models',
       name: 'models',
-      component: () => import('../views/PlaceholderView.vue'),
+      component: () => import('../views/provider/ProviderList.vue'),
+    },
+    {
+      path: '/providers',
+      name: 'providers',
+      component: () => import('../views/provider/ProviderList.vue'),
     },
     {
       path: '/agents',
