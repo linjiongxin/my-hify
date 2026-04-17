@@ -27,6 +27,14 @@ const authTypeOptions = [
   { label: '自定义 Header', value: 'CUSTOM' },
 ]
 
+function formatDateTime(val: unknown) {
+  if (!val) return '-'
+  const d = new Date(String(val))
+  if (Number.isNaN(d.getTime())) return String(val)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 const columns = [
   { prop: 'name', label: '名称', minWidth: 160 },
   { prop: 'code', label: '代码', width: 120, align: 'center' as const },
@@ -34,7 +42,7 @@ const columns = [
   { prop: 'apiBaseUrl', label: 'Base URL', minWidth: 240 },
   { prop: 'authType', label: '鉴权', width: 130, align: 'center' as const },
   { prop: 'enabled', label: '状态', width: 90, align: 'center' as const, slot: 'status' },
-  { prop: 'createdAt', label: '创建时间', width: 180, align: 'center' as const },
+  { prop: 'createdAt', label: '创建时间', width: 180, align: 'center' as const, formatter: (_row: any, _col: any, val: unknown) => formatDateTime(val) },
   { label: '操作', width: 150, align: 'center' as const, slot: 'action' },
 ]
 
@@ -64,11 +72,39 @@ async function fetchApi(params: PageParams): Promise<PageResult<Provider>> {
 }
 
 function handleAdd() {
-  dialogRef.value?.open()
+  dialogRef.value?.open({ authType: 'BEARER', enabled: true, authConfig: {} })
 }
 
 function handleEdit(row: Provider) {
-  dialogRef.value?.open(row)
+  const authConfig = row.authConfig ? { ...row.authConfig } : {}
+  if (row.authType === 'CUSTOM' && authConfig.headers && !Array.isArray(authConfig.headers)) {
+    authConfig.headers = Object.entries(authConfig.headers).map(([key, value]) => ({ key, value: String(value) }))
+  }
+  dialogRef.value?.open({ ...row, authConfig })
+}
+
+function handleAuthTypeChange(val: string, form: any) {
+  if (val === 'API_KEY') {
+    form.authConfig = { headerName: 'X-Api-Key', prefix: '' }
+  } else if (val === 'CUSTOM') {
+    form.authConfig = { headers: [{ key: '', value: '' }] }
+  } else {
+    form.authConfig = {}
+  }
+}
+
+function addCustomHeader(form: any) {
+  if (!form.authConfig) form.authConfig = {}
+  if (!Array.isArray(form.authConfig.headers)) {
+    form.authConfig.headers = []
+  }
+  form.authConfig.headers.push({ key: '', value: '' })
+}
+
+function removeCustomHeader(form: any, index: number) {
+  if (Array.isArray(form.authConfig?.headers)) {
+    form.authConfig.headers.splice(index, 1)
+  }
 }
 
 async function handleDelete(row: Provider) {
@@ -83,14 +119,30 @@ async function handleDelete(row: Provider) {
 }
 
 async function handleSubmit(data: Provider, isEdit: boolean) {
+  const authConfig: any = {}
+  if (data.authType === 'API_KEY') {
+    authConfig.headerName = data.authConfig?.headerName
+    authConfig.prefix = data.authConfig?.prefix
+  } else if (data.authType === 'CUSTOM') {
+    const headers: Record<string, string> = {}
+    if (Array.isArray(data.authConfig?.headers)) {
+      data.authConfig.headers.forEach((h: any) => {
+        if (h.key?.trim()) {
+          headers[h.key.trim()] = h.value || ''
+        }
+      })
+    }
+    authConfig.headers = headers
+  }
+
   const payload = {
     name: data.name,
     code: data.code,
     protocolType: data.protocolType,
     apiBaseUrl: data.apiBaseUrl,
     authType: data.authType,
-    apiKey: data.apiKey,
-    authConfig: data.authConfig,
+    apiKey: data.authType === 'NONE' ? null : data.apiKey,
+    authConfig,
     enabled: data.enabled,
     sortOrder: data.sortOrder,
   }
@@ -166,7 +218,12 @@ async function handleSubmit(data: Provider, isEdit: boolean) {
         </el-form-item>
 
         <el-form-item label="鉴权类型" prop="authType">
-          <el-select v-model="form.authType" placeholder="请选择鉴权类型" style="width: 100%">
+          <el-select
+            v-model="form.authType"
+            placeholder="请选择鉴权类型"
+            style="width: 100%"
+            @change="handleAuthTypeChange($event, form)"
+          >
             <el-option
               v-for="opt in authTypeOptions"
               :key="opt.value"
@@ -176,7 +233,7 @@ async function handleSubmit(data: Provider, isEdit: boolean) {
           </el-select>
         </el-form-item>
 
-        <el-form-item label="API Key" prop="apiKey">
+        <el-form-item v-if="form.authType !== 'NONE'" label="API Key" prop="apiKey">
           <el-input
             v-model="form.apiKey"
             type="password"
@@ -184,6 +241,36 @@ async function handleSubmit(data: Provider, isEdit: boolean) {
             placeholder="请输入 API Key"
           />
         </el-form-item>
+
+        <template v-if="form.authType === 'API_KEY'">
+          <el-form-item label="Header 名称">
+            <el-input v-model="form.authConfig.headerName" placeholder="如 X-Api-Key" />
+          </el-form-item>
+          <el-form-item label="Prefix">
+            <el-input v-model="form.authConfig.prefix" placeholder="请求头值前缀，如 Bearer 或留空" />
+          </el-form-item>
+        </template>
+
+        <template v-if="form.authType === 'CUSTOM'">
+          <el-form-item label="自定义 Headers">
+            <div class="custom-headers">
+              <div
+                v-for="(item, index) in form.authConfig.headers || []"
+                :key="index"
+                class="custom-header-row"
+              >
+                <el-input v-model="item.key" placeholder="Header 名称" />
+                <el-input v-model="item.value" placeholder="Header 值" />
+                <el-button type="danger" text @click="removeCustomHeader(form, index)">
+                  删除
+                </el-button>
+              </div>
+              <el-button type="primary" text @click="addCustomHeader(form)">
+                + 添加 Header
+              </el-button>
+            </div>
+          </el-form-item>
+        </template>
       </template>
     </HifyFormDialog>
   </div>
@@ -226,5 +313,22 @@ async function handleSubmit(data: Provider, isEdit: boolean) {
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
+}
+
+.custom-headers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.custom-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.custom-header-row .el-input {
+  flex: 1;
 }
 </style>

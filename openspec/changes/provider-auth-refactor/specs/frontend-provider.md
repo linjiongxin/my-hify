@@ -39,6 +39,11 @@
 - `updateProvider(id, data)`
 - `deleteProvider(id)`
 
+## 路由与菜单
+
+- 路由 `/providers` 指向 `ProviderList.vue`
+- 左侧导航栏显示「模型提供商」入口（图标 `OfficeBuilding`），位于「模型管理」下方
+
 ## 技术约束
 
 - 使用通用组件 `HifyTable` + `HifyFormDialog`

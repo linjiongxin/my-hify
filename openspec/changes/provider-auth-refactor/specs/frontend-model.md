@@ -47,6 +47,7 @@
 
 - 路由 `/models` 指向 `ModelList.vue`
 - 路由 `/providers` 保留指向 `ProviderList.vue`
+- 左侧导航栏：在「模型管理」下方并列显示「模型提供商」入口（图标 `OfficeBuilding`）
 - 面包屑 `models` 显示为"模型配置"，`providers` 显示为"模型提供商"
 
 ## 技术约束

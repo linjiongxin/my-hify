@@ -19,6 +19,14 @@ import { getProviderPage, type Provider } from '@/api/provider'
 const providerMap = ref<Map<number, string>>(new Map())
 const providerOptions = ref<Provider[]>([])
 
+function formatDateTime(val: unknown) {
+  if (!val) return '-'
+  const d = new Date(String(val))
+  if (Number.isNaN(d.getTime())) return String(val)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 const columns = [
   {
     prop: 'providerId',
@@ -32,7 +40,7 @@ const columns = [
   { prop: 'modelId', label: '模型 ID', minWidth: 180 },
   { prop: 'defaultModel', label: '默认', width: 90, align: 'center' as const, slot: 'defaultModel' },
   { prop: 'enabled', label: '状态', width: 90, align: 'center' as const, slot: 'status' },
-  { prop: 'createdAt', label: '创建时间', width: 180, align: 'center' as const },
+  { prop: 'createdAt', label: '创建时间', width: 180, align: 'center' as const, formatter: (_row: any, _col: any, val: unknown) => formatDateTime(val) },
   { label: '操作', width: 150, align: 'center' as const, slot: 'action' },
 ]
 

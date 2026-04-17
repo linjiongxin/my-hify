@@ -32,6 +32,10 @@
 
 - [x] 更新 `provider.ts` API 层：补充 `authConfig`、协议类型、鉴权类型等字段
 - [x] 重构 `ProviderList.vue`：对接真实 API，替换 mock 数据，支持四种鉴权类型的表单配置
+- [x] 新增 `model.ts` API 层：对接 `/model` CRUD 接口
+- [x] 新增 `ModelList.vue`：模型配置列表、新增、编辑、删除，含提供商下拉映射
+- [x] 修正路由：`/models` 指向模型配置页面，`/providers` 保留为提供商页面
+- [x] 更新面包屑映射：区分"模型配置"与"模型提供商"
 
 ## 验证
 

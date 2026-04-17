@@ -20,7 +20,7 @@ public class PageResult<T> implements Serializable {
     /**
      * 当前页数据
      */
-    private List<T> list;
+    private List<T> records;
 
     /**
      * 当前页码
@@ -43,15 +43,15 @@ public class PageResult<T> implements Serializable {
     private Long pages;
 
     public PageResult() {
-        this.list = Collections.emptyList();
+        this.records = Collections.emptyList();
         this.pageNum = 1L;
         this.pageSize = 20L;
         this.total = 0L;
         this.pages = 0L;
     }
 
-    public PageResult(List<T> list, Long pageNum, Long pageSize, Long total) {
-        this.list = list == null ? Collections.emptyList() : list;
+    public PageResult(List<T> records, Long pageNum, Long pageSize, Long total) {
+        this.records = records == null ? Collections.emptyList() : records;
         this.pageNum = pageNum;
         this.pageSize = pageSize;
         this.total = total;
@@ -61,8 +61,8 @@ public class PageResult<T> implements Serializable {
     /**
      * 构建分页结果
      */
-    public static <T> PageResult<T> of(List<T> list, Long pageNum, Long pageSize, Long total) {
-        return new PageResult<>(list, pageNum, pageSize, total);
+    public static <T> PageResult<T> of(List<T> records, Long pageNum, Long pageSize, Long total) {
+        return new PageResult<>(records, pageNum, pageSize, total);
     }
 
     /**
@@ -83,7 +83,7 @@ public class PageResult<T> implements Serializable {
      * 判断是否为空页
      */
     public boolean isEmpty() {
-        return list == null || list.isEmpty();
+        return records == null || records.isEmpty();
     }
 
     /**

@@ -114,7 +114,16 @@
       "Bash(mv Model.java ModelConfig.java)",
       "Bash(mv ModelVO.java ModelConfigVO.java)",
       "Bash(mv ModelCreateRequest.java ModelConfigCreateRequest.java)",
-      "Bash(mv ModelUpdateRequest.java ModelConfigUpdateRequest.java)"
+      "Bash(mv ModelUpdateRequest.java ModelConfigUpdateRequest.java)",
+      "Bash(./stop.sh)",
+      "Bash(bash stop.sh)",
+      "Bash(bash start.sh)",
+      "Bash(npx playwright:*)",
+      "Bash(./start.sh)",
+      "Bash(time lsof:*)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(time ps:*)",
+      "Bash(node /tmp/screenshot_provider.mjs)"
     ]
   }
 }
