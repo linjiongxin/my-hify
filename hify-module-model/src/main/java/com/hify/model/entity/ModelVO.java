@@ -1,26 +1,26 @@
 package com.hify.model.entity;
 
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableName;
-import com.hify.common.web.entity.base.BaseEntity;
-import com.hify.common.web.handler.JsonbTypeHandler;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
- * 模型定义
+ * 模型视图对象
  *
  * @author hify
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
-@TableName("model_config")
-public class Model extends BaseEntity {
+public class ModelVO implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
+    /**
+     * ID
+     */
+    private Long id;
 
     /**
      * 提供商 ID
@@ -28,12 +28,12 @@ public class Model extends BaseEntity {
     private Long providerId;
 
     /**
-     * 模型名称（展示用）
+     * 模型名称
      */
     private String name;
 
     /**
-     * 模型标识（调用 API 时传入，如 gpt-4o）
+     * 模型标识
      */
     private String modelId;
 
@@ -50,23 +50,20 @@ public class Model extends BaseEntity {
     /**
      * 能力矩阵
      */
-    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> capabilities;
 
     /**
      * 输入价格（每百万 token）
      */
-    @TableField("input_price_per_1m")
     private BigDecimal inputPricePer1m;
 
     /**
      * 输出价格（每百万 token）
      */
-    @TableField("output_price_per_1m")
     private BigDecimal outputPricePer1m;
 
     /**
-     * 是否为该提供商下的默认模型
+     * 是否为默认模型
      */
     private Boolean isDefault;
 
@@ -79,4 +76,14 @@ public class Model extends BaseEntity {
      * 排序
      */
     private Integer sortOrder;
+
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createdAt;
+
+    /**
+     * 更新时间
+     */
+    private LocalDateTime updatedAt;
 }

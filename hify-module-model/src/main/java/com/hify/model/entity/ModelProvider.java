@@ -1,9 +1,13 @@
 package com.hify.model.entity;
 
-import com.hify.common.web.entity.base.BaseEntity;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.hify.common.web.entity.base.BaseEntity;
+import com.hify.common.web.handler.JsonbTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
+import java.util.Map;
 
 /**
  * 模型提供商
@@ -28,14 +32,30 @@ public class ModelProvider extends BaseEntity {
     private String code;
 
     /**
+     * 协议类型（决定后端用哪个 LlmProvider 实现处理）
+     */
+    private String protocolType;
+
+    /**
      * API 基础地址
      */
     private String apiBaseUrl;
 
     /**
-     * 是否需要 API Key
+     * 鉴权类型：BEARER | API_KEY | NONE | CUSTOM
      */
-    private Boolean apiKeyRequired;
+    private String authType;
+
+    /**
+     * 主 API Key
+     */
+    private String apiKey;
+
+    /**
+     * 结构化额外鉴权参数
+     */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> authConfig;
 
     /**
      * 是否启用

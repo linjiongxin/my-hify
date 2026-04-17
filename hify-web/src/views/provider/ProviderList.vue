@@ -7,82 +7,43 @@ import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess } from '@/utils/notify'
 import type { PageResult, PageParams } from '@/components/HifyTable.vue'
 import type { FormRules } from 'element-plus'
+import {
+  getProviderPage,
+  createProvider,
+  updateProvider,
+  deleteProvider,
+  type Provider,
+} from '@/api/provider'
 
-type ProviderType = 'OpenAI' | 'Claude' | 'Gemini' | 'Ollama' | 'DeepSeek'
+const protocolOptions = [
+  { label: 'OpenAI 兼容', value: 'openai_compatible' },
+  { label: '自定义', value: 'custom' },
+]
 
-interface Provider {
-  id: number
-  name: string
-  type: ProviderType
-  apiKey: string
-  baseUrl: string
-  status: 1 | 0
-  createTime: string
-}
-
-const providerOptions = ['OpenAI', 'Claude', 'Gemini', 'Ollama', 'DeepSeek']
-
-const mockList = ref<Provider[]>([
-  {
-    id: 1,
-    name: 'OpenAI 官方',
-    type: 'OpenAI',
-    apiKey: 'sk-************abcd',
-    baseUrl: 'https://api.openai.com/v1',
-    status: 1,
-    createTime: '2024-01-15 09:30:00',
-  },
-  {
-    id: 2,
-    name: 'Anthropic Claude',
-    type: 'Claude',
-    apiKey: 'sk-ant-************efgh',
-    baseUrl: 'https://api.anthropic.com',
-    status: 1,
-    createTime: '2024-02-08 14:20:00',
-  },
-  {
-    id: 3,
-    name: 'Google Gemini',
-    type: 'Gemini',
-    apiKey: 'AIza****************xyz',
-    baseUrl: 'https://generativelanguage.googleapis.com',
-    status: 0,
-    createTime: '2024-03-12 11:45:00',
-  },
-  {
-    id: 4,
-    name: 'Ollama 本地模型',
-    type: 'Ollama',
-    apiKey: '',
-    baseUrl: 'http://localhost:11434',
-    status: 1,
-    createTime: '2024-04-05 16:00:00',
-  },
-  {
-    id: 5,
-    name: 'DeepSeek',
-    type: 'DeepSeek',
-    apiKey: 'sk-************1234',
-    baseUrl: 'https://api.deepseek.com/v1',
-    status: 1,
-    createTime: '2024-05-20 10:10:00',
-  },
-])
+const authTypeOptions = [
+  { label: 'Bearer Token', value: 'BEARER' },
+  { label: 'API Key', value: 'API_KEY' },
+  { label: '无认证', value: 'NONE' },
+  { label: '自定义 Header', value: 'CUSTOM' },
+]
 
 const columns = [
   { prop: 'name', label: '名称', minWidth: 160 },
-  { prop: 'type', label: '类型', width: 120, align: 'center' as const },
-  { prop: 'baseUrl', label: 'Base URL', minWidth: 240 },
-  { prop: 'status', label: '状态', width: 100, align: 'center' as const, slot: 'status' },
-  { prop: 'createTime', label: '创建时间', width: 180, align: 'center' as const },
+  { prop: 'code', label: '代码', width: 120, align: 'center' as const },
+  { prop: 'protocolType', label: '协议', width: 140, align: 'center' as const },
+  { prop: 'apiBaseUrl', label: 'Base URL', minWidth: 240 },
+  { prop: 'authType', label: '鉴权', width: 130, align: 'center' as const },
+  { prop: 'enabled', label: '状态', width: 90, align: 'center' as const, slot: 'status' },
+  { prop: 'createdAt', label: '创建时间', width: 180, align: 'center' as const },
   { label: '操作', width: 150, align: 'center' as const, slot: 'action' },
 ]
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择类型', trigger: 'change' }],
-  baseUrl: [{ required: true, message: '请输入 Base URL', trigger: 'blur' }],
+  code: [{ required: true, message: '请输入代码', trigger: 'blur' }],
+  protocolType: [{ required: true, message: '请选择协议类型', trigger: 'change' }],
+  apiBaseUrl: [{ required: true, message: '请输入 Base URL', trigger: 'blur' }],
+  authType: [{ required: true, message: '请选择鉴权类型', trigger: 'change' }],
 }
 
 interface HifyTableExpose {
@@ -99,16 +60,7 @@ const dialogRef = ref<HifyFormDialogExpose>()
 const { confirmDelete } = useConfirm()
 
 async function fetchApi(params: PageParams): Promise<PageResult<Provider>> {
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  const start = (params.current - 1) * params.size
-  const end = start + params.size
-  const records = mockList.value.slice(start, end)
-  return {
-    records,
-    total: mockList.value.length,
-    current: params.current,
-    size: params.size,
-  }
+  return getProviderPage(params)
 }
 
 function handleAdd() {
@@ -122,33 +74,35 @@ function handleEdit(row: Provider) {
 async function handleDelete(row: Provider) {
   await confirmDelete(
     async () => {
-      mockList.value = mockList.value.filter((item) => item.id !== row.id)
+      await deleteProvider(row.id)
+      notifySuccess('删除成功')
+      tableRef.value?.refresh()
     },
-    { title: '删除提供商', message: `确定删除 "${row.name}" 吗？`, successMessage: '删除成功' }
+    { title: '删除提供商', message: `确定删除 "${row.name}" 吗？` }
   )
-  tableRef.value?.refresh()
 }
 
-function handleSubmit(data: Provider, isEdit: boolean) {
-  setTimeout(() => {
-    if (isEdit) {
-      const idx = mockList.value.findIndex((item) => item.id === data.id)
-      if (idx > -1) {
-        mockList.value[idx] = { ...data }
-      }
-      notifySuccess('修改成功')
-    } else {
-      mockList.value.unshift({
-        ...data,
-        id: Date.now(),
-        status: 1,
-        createTime: new Date().toLocaleString().replace(/\//g, '-'),
-      })
-      notifySuccess('新增成功')
-    }
-    dialogRef.value?.finish()
-    tableRef.value?.refresh()
-  }, 400)
+async function handleSubmit(data: Provider, isEdit: boolean) {
+  const payload = {
+    name: data.name,
+    code: data.code,
+    protocolType: data.protocolType,
+    apiBaseUrl: data.apiBaseUrl,
+    authType: data.authType,
+    apiKey: data.apiKey,
+    authConfig: data.authConfig,
+    enabled: data.enabled,
+    sortOrder: data.sortOrder,
+  }
+  if (isEdit) {
+    await updateProvider(data.id, payload)
+    notifySuccess('修改成功')
+  } else {
+    await createProvider(payload)
+    notifySuccess('新增成功')
+  }
+  dialogRef.value?.finish()
+  tableRef.value?.refresh()
 }
 </script>
 
@@ -168,8 +122,8 @@ function handleSubmit(data: Provider, isEdit: boolean) {
     <!-- 列表 -->
     <HifyTable ref="tableRef" :columns="columns" :api="fetchApi">
       <template #status="{ row }">
-        <el-tag :type="row.status === 1 ? 'success' : 'info'">
-          {{ row.status === 1 ? '启用' : '禁用' }}
+        <el-tag :type="row.enabled ? 'success' : 'info'">
+          {{ row.enabled ? '启用' : '禁用' }}
         </el-tag>
       </template>
 
@@ -192,23 +146,43 @@ function handleSubmit(data: Provider, isEdit: boolean) {
           <el-input v-model="form.name" placeholder="请输入提供商名称" />
         </el-form-item>
 
-        <el-form-item label="类型" prop="type">
-          <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
+        <el-form-item label="代码" prop="code">
+          <el-input v-model="form.code" placeholder="如 openai、deepseek" />
+        </el-form-item>
+
+        <el-form-item label="协议类型" prop="protocolType">
+          <el-select v-model="form.protocolType" placeholder="请选择协议类型" style="width: 100%">
             <el-option
-              v-for="opt in providerOptions"
-              :key="opt"
-              :label="opt"
-              :value="opt"
+              v-for="opt in protocolOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="Base URL" prop="apiBaseUrl">
+          <el-input v-model="form.apiBaseUrl" placeholder="请输入 API 基础地址" />
+        </el-form-item>
+
+        <el-form-item label="鉴权类型" prop="authType">
+          <el-select v-model="form.authType" placeholder="请选择鉴权类型" style="width: 100%">
+            <el-option
+              v-for="opt in authTypeOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
             />
           </el-select>
         </el-form-item>
 
         <el-form-item label="API Key" prop="apiKey">
-          <el-input v-model="form.apiKey" type="password" show-password placeholder="请输入 API Key" />
-        </el-form-item>
-
-        <el-form-item label="Base URL" prop="baseUrl">
-          <el-input v-model="form.baseUrl" placeholder="请输入 Base URL" />
+          <el-input
+            v-model="form.apiKey"
+            type="password"
+            show-password
+            placeholder="请输入 API Key"
+          />
         </el-form-item>
       </template>
     </HifyFormDialog>

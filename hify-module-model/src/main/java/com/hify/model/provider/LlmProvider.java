@@ -3,6 +3,7 @@ package com.hify.model.provider;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmChatResponse;
 import com.hify.model.api.dto.LlmStreamChunk;
+import com.hify.model.entity.ModelProvider;
 
 import java.util.function.Consumer;
 
@@ -14,7 +15,7 @@ import java.util.function.Consumer;
 public interface LlmProvider {
 
     /**
-     * Provider 代码标识
+     * Provider 协议类型标识
      */
     String getCode();
 
@@ -26,14 +27,16 @@ public interface LlmProvider {
     /**
      * 非流式对话
      *
-     * @param providerCode 提供商代码（由上层解析后传入）
+     * @param modelId  模型标识
+     * @param provider 提供商配置（含鉴权、BaseUrl 等）
      */
-    LlmChatResponse chat(String modelId, String providerCode, LlmChatRequest request);
+    LlmChatResponse chat(String modelId, ModelProvider provider, LlmChatRequest request);
 
     /**
      * 流式对话
      *
-     * @param providerCode 提供商代码（由上层解析后传入）
+     * @param modelId  模型标识
+     * @param provider 提供商配置（含鉴权、BaseUrl 等）
      */
-    void chatStream(String modelId, String providerCode, LlmChatRequest request, Consumer<LlmStreamChunk> callback);
+    void chatStream(String modelId, ModelProvider provider, LlmChatRequest request, Consumer<LlmStreamChunk> callback);
 }

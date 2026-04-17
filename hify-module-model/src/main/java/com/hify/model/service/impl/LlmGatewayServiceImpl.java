@@ -44,13 +44,14 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
             throw new IllegalStateException("模型提供商不可用: " + model.getProviderId());
         }
 
-        String providerCode = resolveProviderCode(request, provider);
-        LlmProvider llmProvider = providerFactory.getProvider(providerCode);
+        String protocolType = resolveProtocolType(request, provider);
+        LlmProvider llmProvider = providerFactory.getProvider(protocolType);
+        String providerCode = provider.getCode();
 
         long start = System.currentTimeMillis();
         try {
             semaphoreManager.acquire(providerCode);
-            LlmChatResponse response = llmProvider.chat(modelId, providerCode, request);
+            LlmChatResponse response = llmProvider.chat(modelId, provider, request);
             log.debug("LLM 调用完成, modelId={}, provider={}, duration={}ms",
                     modelId, providerCode, System.currentTimeMillis() - start);
             return response;
@@ -70,8 +71,9 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
             throw new IllegalStateException("模型提供商不可用: " + model.getProviderId());
         }
 
-        String providerCode = resolveProviderCode(request, provider);
-        LlmProvider llmProvider = providerFactory.getProvider(providerCode);
+        String protocolType = resolveProtocolType(request, provider);
+        LlmProvider llmProvider = providerFactory.getProvider(protocolType);
+        String providerCode = provider.getCode();
 
         long start = System.currentTimeMillis();
         java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -83,7 +85,7 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
 
         try {
             semaphoreManager.acquire(providerCode);
-            llmProvider.chatStream(modelId, providerCode, request, chunk -> {
+            llmProvider.chatStream(modelId, provider, request, chunk -> {
                 callback.accept(chunk);
                 if (Boolean.TRUE.equals(chunk.getFinish())) {
                     doRelease.run();
@@ -109,10 +111,10 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
         return model;
     }
 
-    private String resolveProviderCode(LlmChatRequest request, ModelProvider provider) {
-        if (request != null && request.getExtra() != null && request.getExtra().get("providerCode") != null) {
-            return request.getExtra().get("providerCode");
+    private String resolveProtocolType(LlmChatRequest request, ModelProvider provider) {
+        if (request != null && request.getExtra() != null && request.getExtra().get("protocolType") != null) {
+            return request.getExtra().get("protocolType");
         }
-        return provider.getCode();
+        return provider.getProtocolType() != null ? provider.getProtocolType() : "openai_compatible";
     }
 }

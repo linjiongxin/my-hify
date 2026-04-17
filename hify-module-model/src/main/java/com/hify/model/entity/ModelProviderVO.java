@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * 模型提供商视图对象
@@ -31,14 +32,29 @@ public class ModelProviderVO implements Serializable {
     private String code;
 
     /**
+     * 协议类型
+     */
+    private String protocolType;
+
+    /**
      * API 基础地址
      */
     private String apiBaseUrl;
 
     /**
-     * 是否需要 API Key
+     * 鉴权类型
      */
-    private Boolean apiKeyRequired;
+    private String authType;
+
+    /**
+     * API Key
+     */
+    private String apiKey;
+
+    /**
+     * 额外鉴权配置
+     */
+    private Map<String, Object> authConfig;
 
     /**
      * 是否启用
@@ -49,6 +65,11 @@ public class ModelProviderVO implements Serializable {
      * 排序
      */
     private Integer sortOrder;
+
+    /**
+     * 健康状态
+     */
+    private String healthStatus;
 
     /**
      * 创建时间

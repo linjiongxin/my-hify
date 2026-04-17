@@ -48,8 +48,11 @@ CREATE TABLE IF NOT EXISTS model_provider (
     id BIGINT PRIMARY KEY,
     name VARCHAR(64) NOT NULL,
     code VARCHAR(32) NOT NULL,
+    protocol_type VARCHAR(32) DEFAULT 'openai_compatible',
     api_base_url VARCHAR(256) NOT NULL,
-    api_key_required BOOLEAN DEFAULT TRUE,
+    auth_type VARCHAR(32) DEFAULT 'BEARER',
+    api_key VARCHAR(512),
+    auth_config JSONB DEFAULT '{}',
     enabled BOOLEAN DEFAULT TRUE,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -65,14 +68,17 @@ CREATE TRIGGER update_model_provider_updated_at
 
 CREATE UNIQUE INDEX uk_model_provider_code ON model_provider(code) WHERE deleted = FALSE;
 
-CREATE TABLE IF NOT EXISTS model (
+CREATE TABLE IF NOT EXISTS model_config (
     id BIGINT PRIMARY KEY,
     provider_id BIGINT NOT NULL,
     name VARCHAR(64) NOT NULL,
     model_id VARCHAR(64) NOT NULL,
     max_tokens INT DEFAULT 4096,
-    temperature_min DECIMAL(3,2) DEFAULT 0.0,
-    temperature_max DECIMAL(3,2) DEFAULT 2.0,
+    context_window INT DEFAULT 8192,
+    capabilities JSONB DEFAULT '{"chat":true,"streaming":true,"vision":false,"toolCalling":false,"reasoning":false,"jsonMode":false}',
+    input_price_per_1m DECIMAL(10,6),
+    output_price_per_1m DECIMAL(10,6),
+    is_default BOOLEAN DEFAULT FALSE,
     enabled BOOLEAN DEFAULT TRUE,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -82,32 +88,32 @@ CREATE TABLE IF NOT EXISTS model (
     updated_by BIGINT
 );
 
-CREATE TRIGGER update_model_updated_at
-    BEFORE UPDATE ON model
+CREATE TRIGGER update_model_config_updated_at
+    BEFORE UPDATE ON model_config
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE INDEX idx_model_provider_id ON model(provider_id);
-CREATE UNIQUE INDEX uk_model_model_id ON model(model_id) WHERE deleted = FALSE;
+CREATE INDEX idx_model_config_provider_id ON model_config(provider_id);
+CREATE UNIQUE INDEX uk_model_config_model_id ON model_config(model_id) WHERE deleted = FALSE;
+CREATE INDEX idx_model_config_capabilities ON model_config USING GIN (capabilities);
 
-CREATE TABLE IF NOT EXISTS model_provider_config (
-    id BIGINT PRIMARY KEY,
-    provider_id BIGINT NOT NULL,
-    api_key VARCHAR(512),
-    api_base_url VARCHAR(256),
-    config_json JSONB,
-    enabled BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    created_by BIGINT,
-    updated_by BIGINT
+CREATE TABLE IF NOT EXISTS model_provider_status (
+    provider_id BIGINT PRIMARY KEY REFERENCES model_provider(id) ON DELETE CASCADE,
+    health_status VARCHAR(16) DEFAULT 'unknown',
+    health_checked_at TIMESTAMP,
+    health_latency_ms INTEGER,
+    health_error_msg TEXT,
+    total_requests BIGINT DEFAULT 0,
+    failed_requests BIGINT DEFAULT 0,
+    last_error_at TIMESTAMP,
+    last_error_code VARCHAR(64),
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TRIGGER update_model_provider_config_updated_at
-    BEFORE UPDATE ON model_provider_config
+CREATE TRIGGER update_model_provider_status_updated_at
+    BEFORE UPDATE ON model_provider_status
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE INDEX idx_model_provider_config_provider_id ON model_provider_config(provider_id);
+CREATE INDEX idx_provider_status_health ON model_provider_status(health_status);
 
 -- ========================================
 -- Agent 模块（前缀: agent_）
@@ -426,21 +432,26 @@ VALUES (1, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5E
 ON CONFLICT (username) DO NOTHING;
 
 -- 模型提供商
-INSERT INTO model_provider (id, name, code, api_base_url, api_key_required, enabled, sort_order)
+INSERT INTO model_provider (id, name, code, protocol_type, api_base_url, auth_type, api_key, auth_config, enabled, sort_order)
 VALUES
-(1, 'OpenAI', 'openai', 'https://api.openai.com/v1', true, true, 1),
-(2, 'DeepSeek', 'deepseek', 'https://api.deepseek.com/v1', true, true, 2),
-(3, 'Ollama', 'ollama', 'http://localhost:11434', false, true, 99);
+(1, 'OpenAI', 'openai', 'openai_compatible', 'https://api.openai.com/v1', 'BEARER', '', '{}', true, 1),
+(2, 'DeepSeek', 'deepseek', 'openai_compatible', 'https://api.deepseek.com/v1', 'BEARER', '', '{}', true, 2),
+(3, 'Ollama', 'ollama', 'openai_compatible', 'http://localhost:11434/v1', 'NONE', '', '{}', true, 99),
+(4, '通义千问', 'qwen', 'openai_compatible', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'BEARER', '', '{}', true, 3),
+(5, 'Azure OpenAI', 'azure_openai', 'openai_compatible', 'https://your-resource.openai.azure.com/openai/deployments', 'API_KEY', '', '{"headerName":"api-key","prefix":""}', true, 4);
 
 -- 模型
-INSERT INTO model (id, provider_id, name, model_id, max_tokens, enabled)
+INSERT INTO model_config (id, provider_id, name, model_id, max_tokens, context_window, capabilities, is_default, enabled)
 VALUES
-(1, 1, 'GPT-4o', 'gpt-4o', 8192, true),
-(2, 1, 'GPT-4o Mini', 'gpt-4o-mini', 8192, true),
-(3, 1, 'GPT-3.5 Turbo', 'gpt-3.5-turbo', 4096, true),
-(4, 2, 'DeepSeek Chat', 'deepseek-chat', 8192, true),
-(5, 2, 'DeepSeek Coder', 'deepseek-coder', 8192, true),
-(6, 3, 'Llama 2', 'llama2', 4096, true);
+(1, 1, 'GPT-4o', 'gpt-4o', 4096, 128000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true),
+(2, 1, 'GPT-4o Mini', 'gpt-4o-mini', 4096, 128000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', false, true),
+(3, 1, 'o3 Mini', 'o3-mini', 4096, 200000, '{"chat":true,"streaming":true,"vision":false,"toolCalling":true,"reasoning":true,"jsonMode":true}', false, true),
+(4, 2, 'DeepSeek V3', 'deepseek-chat', 8192, 64000, '{"chat":true,"streaming":true,"vision":false,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true),
+(5, 2, 'DeepSeek R1', 'deepseek-reasoner', 8192, 64000, '{"chat":true,"streaming":true,"vision":false,"toolCalling":true,"reasoning":true,"jsonMode":true}', false, true),
+(6, 3, 'Llama 3.1', 'llama3.1', 4096, 128000, '{"chat":true,"streaming":true,"vision":false,"toolCalling":false,"reasoning":false,"jsonMode":false}', true, true),
+(7, 4, 'Qwen2.5-72B', 'qwen2.5-72b-instruct', 8192, 131072, '{"chat":true,"streaming":true,"vision":false,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true),
+(8, 4, 'Qwen-VL-Max', 'qwen-vl-max', 2048, 32768, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', false, true),
+(9, 5, 'GPT-4o (Azure)', 'gpt-4o-azure', 4096, 128000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true);
 
 -- 验证安装
 SELECT 'pgvector version: ' || extversion AS info

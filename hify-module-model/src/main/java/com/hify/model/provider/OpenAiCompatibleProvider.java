@@ -7,8 +7,7 @@ import com.hify.model.api.dto.LlmChatResponse;
 import com.hify.model.api.dto.LlmMessage;
 import com.hify.model.api.dto.LlmStreamChunk;
 import com.hify.model.api.dto.LlmUsage;
-import com.hify.model.config.LlmGatewayProperties;
-import lombok.RequiredArgsConstructor;
+import com.hify.model.entity.ModelProvider;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -38,12 +37,10 @@ import java.util.function.Consumer;
 public class OpenAiCompatibleProvider implements LlmProvider {
 
     private final ObjectMapper objectMapper;
-    private final LlmGatewayProperties properties;
     private final OkHttpClient baseClient;
 
-    public OpenAiCompatibleProvider(ObjectMapper objectMapper, LlmGatewayProperties properties) {
+    public OpenAiCompatibleProvider(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        this.properties = properties;
         this.baseClient = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
@@ -72,19 +69,18 @@ public class OpenAiCompatibleProvider implements LlmProvider {
     }
 
     @Override
-    public LlmChatResponse chat(String modelId, String providerCode, LlmChatRequest request) {
-        String apiUrl = resolveApiUrl(providerCode, request) + "/chat/completions";
-        String apiKey = resolveApiKey(providerCode, request);
+    public LlmChatResponse chat(String modelId, ModelProvider provider, LlmChatRequest request) {
+        String apiUrl = resolveApiUrl(provider, request) + "/chat/completions";
         String jsonBody = buildRequestBody(modelId, request, false);
 
-        Request httpRequest = new Request.Builder()
+        Request.Builder requestBuilder = new Request.Builder()
                 .url(apiUrl)
-                .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
-                .post(RequestBody.create(jsonBody, MediaType.parse("application/json")))
-                .build();
+                .post(RequestBody.create(jsonBody, MediaType.parse("application/json")));
 
-        try (Response response = getClient(false).newCall(httpRequest).execute()) {
+        applyAuthHeaders(requestBuilder, provider, request);
+
+        try (Response response = getClient(false).newCall(requestBuilder.build()).execute()) {
             String bodyString = null;
             if (response.body() != null) {
                 bodyString = response.body().string();
@@ -99,21 +95,20 @@ public class OpenAiCompatibleProvider implements LlmProvider {
     }
 
     @Override
-    public void chatStream(String modelId, String providerCode, LlmChatRequest request, Consumer<LlmStreamChunk> callback) {
-        String apiUrl = resolveApiUrl(providerCode, request) + "/chat/completions";
-        String apiKey = resolveApiKey(providerCode, request);
+    public void chatStream(String modelId, ModelProvider provider, LlmChatRequest request, Consumer<LlmStreamChunk> callback) {
+        String apiUrl = resolveApiUrl(provider, request) + "/chat/completions";
         String jsonBody = buildRequestBody(modelId, request, true);
 
-        Request httpRequest = new Request.Builder()
+        Request.Builder requestBuilder = new Request.Builder()
                 .url(apiUrl)
-                .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
-                .post(RequestBody.create(jsonBody, MediaType.parse("application/json")))
-                .build();
+                .post(RequestBody.create(jsonBody, MediaType.parse("application/json")));
+
+        applyAuthHeaders(requestBuilder, provider, request);
 
         EventSource.Factory factory = EventSources.createFactory(getClient(true));
-        factory.newEventSource(httpRequest, new EventSourceListener() {
+        factory.newEventSource(requestBuilder.build(), new EventSourceListener() {
             @Override
             public void onEvent(EventSource eventSource, String id, String type, String data) {
                 if ("[DONE]".equals(data)) {
@@ -139,27 +134,57 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         });
     }
 
-    private String resolveApiUrl(String providerCode, LlmChatRequest request) {
-        // 优先从请求扩展参数中读取，否则使用配置
+    private String resolveApiUrl(ModelProvider provider, LlmChatRequest request) {
+        // 优先从请求扩展参数中读取运行时覆盖
         if (request != null && request.getExtra() != null && request.getExtra().get("apiBaseUrl") != null) {
             return request.getExtra().get("apiBaseUrl");
         }
-        LlmGatewayProperties.ProviderConfig config = properties.getProviders().get(providerCode);
-        if (config != null && config.getApiBaseUrl() != null) {
-            return config.getApiBaseUrl();
+        if (provider != null && provider.getApiBaseUrl() != null) {
+            return provider.getApiBaseUrl();
         }
         return "https://api.openai.com/v1";
     }
 
-    private String resolveApiKey(String providerCode, LlmChatRequest request) {
+    private String resolveApiKey(ModelProvider provider, LlmChatRequest request) {
         if (request != null && request.getExtra() != null && request.getExtra().get("apiKey") != null) {
             return request.getExtra().get("apiKey");
         }
-        LlmGatewayProperties.ProviderConfig config = properties.getProviders().get(providerCode);
-        if (config != null && config.getApiKey() != null) {
-            return config.getApiKey();
+        if (provider != null && provider.getApiKey() != null) {
+            return provider.getApiKey();
         }
         return "";
+    }
+
+    private void applyAuthHeaders(Request.Builder requestBuilder, ModelProvider provider, LlmChatRequest request) {
+        String authType = provider != null && provider.getAuthType() != null ? provider.getAuthType() : "BEARER";
+        String apiKey = resolveApiKey(provider, request);
+
+        switch (authType.toUpperCase()) {
+            case "BEARER" -> requestBuilder.header("Authorization", "Bearer " + apiKey);
+            case "API_KEY" -> {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> config = provider.getAuthConfig() != null ? provider.getAuthConfig() : Map.of();
+                String headerName = config.get("headerName") != null ? config.get("headerName").toString() : "api-key";
+                String prefix = config.get("prefix") != null ? config.get("prefix").toString() : "";
+                requestBuilder.header(headerName, prefix + apiKey);
+            }
+            case "NONE" -> {
+                // 不添加认证头
+            }
+            case "CUSTOM" -> {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> config = provider.getAuthConfig() != null ? provider.getAuthConfig() : Map.of();
+                Object headersObj = config.get("headers");
+                if (headersObj instanceof Map<?, ?> headers) {
+                    headers.forEach((k, v) -> {
+                        if (k != null && v != null) {
+                            requestBuilder.header(k.toString(), v.toString());
+                        }
+                    });
+                }
+            }
+            default -> requestBuilder.header("Authorization", "Bearer " + apiKey);
+        }
     }
 
     private String buildRequestBody(String modelId, LlmChatRequest request, boolean stream) {

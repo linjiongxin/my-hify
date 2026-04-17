@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
+import java.util.Map;
+
 /**
  * 创建模型提供商请求
  *
@@ -20,11 +22,18 @@ public class ModelProviderCreateRequest {
     @Pattern(regexp = "^[a-z0-9_]+$", message = "代码只能包含小写字母、数字和下划线")
     private String code;
 
+    @NotBlank(message = "协议类型不能为空")
+    private String protocolType;
+
     @NotBlank(message = "API 基础地址不能为空")
     private String apiBaseUrl;
 
-    @NotNull(message = "是否需要 API Key 不能为空")
-    private Boolean apiKeyRequired;
+    @NotBlank(message = "鉴权类型不能为空")
+    private String authType;
+
+    private String apiKey;
+
+    private Map<String, Object> authConfig;
 
     private Boolean enabled = true;
 

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hify.model.mapper.ModelProviderMapper">
+
+    <resultMap id="providerVOResultMap" type="com.hify.model.entity.ModelProviderVO">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="code" property="code"/>
+        <result column="protocol_type" property="protocolType"/>
+        <result column="api_base_url" property="apiBaseUrl"/>
+        <result column="auth_type" property="authType"/>
+        <result column="api_key" property="apiKey"/>
+        <result column="auth_config" property="authConfig"
+                typeHandler="com.hify.common.web.handler.JsonbTypeHandler"/>
+        <result column="enabled" property="enabled"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="health_status" property="healthStatus"/>
+    </resultMap>
+
+    <sql id="providerColumns">
+        mp.id,
+        mp.name,
+        mp.code,
+        mp.protocol_type,
+        mp.api_base_url,
+        mp.auth_type,
+        mp.api_key,
+        mp.auth_config,
+        mp.enabled,
+        mp.sort_order,
+        mp.created_at,
+        mp.updated_at,
+        mps.health_status
+    </sql>
+
+    <select id="selectProviderPage" resultMap="providerVOResultMap">
+        SELECT
+        <include refid="providerColumns"/>
+        FROM model_provider mp
+        LEFT JOIN model_provider_status mps ON mp.id = mps.provider_id
+        WHERE mp.deleted = #{deleted}
+        ORDER BY mp.sort_order ASC, mp.id ASC
+    </select>
+
+    <select id="selectProviderDetail" resultMap="providerVOResultMap">
+        SELECT
+        <include refid="providerColumns"/>
+        FROM model_provider mp
+        LEFT JOIN model_provider_status mps ON mp.id = mps.provider_id
+        WHERE mp.id = #{id}
+        AND mp.deleted = FALSE
+        LIMIT 1
+    </select>
+
+</mapper>
