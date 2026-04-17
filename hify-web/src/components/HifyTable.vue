@@ -45,7 +45,7 @@ const loading = ref(false)
 const data = ref<T[]>([])
 const total = ref(0)
 const currentPage = ref(1)
-const pageSizeVal = computed(() => props.pageSize)
+const pageSizeVal = ref(props.pageSize)
 
 const emptyText = computed(() => (loading.value ? '' : '暂无数据'))
 
@@ -70,7 +70,7 @@ function handleCurrentChange(val: number) {
 
 function handleSizeChange(val: number) {
   currentPage.value = 1
-  // pageSize is prop-controlled in simple mode, just refetch
+  pageSizeVal.value = val
   fetchData()
 }
 
@@ -123,9 +123,11 @@ watch(() => props.api, refresh, { deep: false })
     <div v-if="showPagination" class="pagination-wrapper">
       <el-pagination
         v-model:current-page="currentPage"
-        :page-size="pageSizeVal"
+        v-model:page-size="pageSizeVal"
         :total="total"
-        layout="total, prev, pager, next"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        background
         @current-change="handleCurrentChange"
         @size-change="handleSizeChange"
       />

@@ -8,8 +8,8 @@ const isCollapsed = ref(false)
 
 const menuItems = [
   { title: '对话', icon: ChatDotRound, path: '/' },
-  { title: '模型管理', icon: Setting, path: '/models' },
   { title: '模型提供商', icon: OfficeBuilding, path: '/providers' },
+  { title: '模型管理', icon: Setting, path: '/models' },
   { title: 'Agent 管理', icon: User, path: '/agents' },
   { title: '知识库', icon: Collection, path: '/knowledge' },
   { title: '工作流', icon: Share, path: '/workflows' },
