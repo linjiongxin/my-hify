@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS model_config (
     capabilities JSONB DEFAULT '{"chat":true,"streaming":true,"vision":false,"toolCalling":false,"reasoning":false,"jsonMode":false}',
     input_price_per_1m DECIMAL(10,6),
     output_price_per_1m DECIMAL(10,6),
-    is_default BOOLEAN DEFAULT FALSE,
+    default_model BOOLEAN DEFAULT FALSE,
     enabled BOOLEAN DEFAULT TRUE,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -441,7 +441,7 @@ VALUES
 (5, 'Azure OpenAI', 'azure_openai', 'openai_compatible', 'https://your-resource.openai.azure.com/openai/deployments', 'API_KEY', '', '{"headerName":"api-key","prefix":""}', true, 4);
 
 -- 模型
-INSERT INTO model_config (id, provider_id, name, model_id, max_tokens, context_window, capabilities, is_default, enabled)
+INSERT INTO model_config (id, provider_id, name, model_id, max_tokens, context_window, capabilities, default_model, enabled)
 VALUES
 (1, 1, 'GPT-4o', 'gpt-4o', 4096, 128000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true),
 (2, 1, 'GPT-4o Mini', 'gpt-4o-mini', 4096, 128000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', false, true),

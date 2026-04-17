@@ -2,11 +2,14 @@ package com.hify.model.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.common.core.enums.ResultCode;
+import com.hify.common.core.exception.BizException;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmChatResponse;
 import com.hify.model.api.dto.LlmMessage;
 import com.hify.model.api.dto.LlmStreamChunk;
 import com.hify.model.api.dto.LlmUsage;
+import com.hify.model.constant.ModelConstants;
 import com.hify.model.entity.ModelProvider;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
@@ -15,7 +18,6 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.sse.EventSource;
-import okhttp3.sse.EventSourceListener;
 import okhttp3.sse.EventSources;
 import org.springframework.stereotype.Component;
 
@@ -59,7 +61,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
 
     @Override
     public String getCode() {
-        return "openai_compatible";
+        return ModelConstants.ProtocolType.OPENAI_COMPATIBLE;
     }
 
     @Override
@@ -86,11 +88,12 @@ public class OpenAiCompatibleProvider implements LlmProvider {
                 bodyString = response.body().string();
             }
             if (!response.isSuccessful()) {
-                throw new RuntimeException("LLM API 调用失败: " + response.code() + ", body=" + (bodyString != null ? bodyString : ""));
+                throw new BizException(ResultCode.LLM_API_ERROR,
+                        "LLM API 调用失败: " + response.code() + ", body=" + (bodyString != null ? bodyString : ""));
             }
             return parseChatResponse(bodyString != null ? bodyString : "{}");
         } catch (IOException e) {
-            throw new RuntimeException("LLM API 请求异常", e);
+            throw new BizException(ResultCode.LLM_API_ERROR, "LLM API 请求异常", e);
         }
     }
 
@@ -108,30 +111,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         applyAuthHeaders(requestBuilder, provider, request);
 
         EventSource.Factory factory = EventSources.createFactory(getClient(true));
-        factory.newEventSource(requestBuilder.build(), new EventSourceListener() {
-            @Override
-            public void onEvent(EventSource eventSource, String id, String type, String data) {
-                if ("[DONE]".equals(data)) {
-                    callback.accept(LlmStreamChunk.builder().finish(true).build());
-                    return;
-                }
-                try {
-                    LlmStreamChunk chunk = parseStreamChunk(data);
-                    callback.accept(chunk);
-                    if (Boolean.TRUE.equals(chunk.getFinish())) {
-                        eventSource.cancel();
-                    }
-                } catch (Exception e) {
-                    log.warn("解析 SSE 流数据失败: {}", data, e);
-                }
-            }
-
-            @Override
-            public void onFailure(EventSource eventSource, Throwable t, Response response) {
-                log.error("SSE 流连接异常", t);
-                callback.accept(LlmStreamChunk.builder().finish(true).build());
-            }
-        });
+        factory.newEventSource(requestBuilder.build(), new OpenAiSseEventListener(callback, objectMapper));
     }
 
     private String resolveApiUrl(ModelProvider provider, LlmChatRequest request) {
@@ -156,25 +136,29 @@ public class OpenAiCompatibleProvider implements LlmProvider {
     }
 
     private void applyAuthHeaders(Request.Builder requestBuilder, ModelProvider provider, LlmChatRequest request) {
-        String authType = provider != null && provider.getAuthType() != null ? provider.getAuthType() : "BEARER";
+        String authType = provider != null && provider.getAuthType() != null ? provider.getAuthType() : ModelConstants.AuthType.BEARER;
         String apiKey = resolveApiKey(provider, request);
 
         switch (authType.toUpperCase()) {
-            case "BEARER" -> requestBuilder.header("Authorization", "Bearer " + apiKey);
-            case "API_KEY" -> {
+            case ModelConstants.AuthType.BEARER -> requestBuilder.header(ModelConstants.HeaderName.AUTHORIZATION, "Bearer " + apiKey);
+            case ModelConstants.AuthType.API_KEY -> {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> config = provider.getAuthConfig() != null ? provider.getAuthConfig() : Map.of();
-                String headerName = config.get("headerName") != null ? config.get("headerName").toString() : "api-key";
-                String prefix = config.get("prefix") != null ? config.get("prefix").toString() : "";
+                String headerName = config.get(ModelConstants.AuthConfigKey.HEADER_NAME) != null
+                        ? config.get(ModelConstants.AuthConfigKey.HEADER_NAME).toString()
+                        : ModelConstants.HeaderName.API_KEY;
+                String prefix = config.get(ModelConstants.AuthConfigKey.PREFIX) != null
+                        ? config.get(ModelConstants.AuthConfigKey.PREFIX).toString()
+                        : "";
                 requestBuilder.header(headerName, prefix + apiKey);
             }
-            case "NONE" -> {
+            case ModelConstants.AuthType.NONE -> {
                 // 不添加认证头
             }
-            case "CUSTOM" -> {
+            case ModelConstants.AuthType.CUSTOM -> {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> config = provider.getAuthConfig() != null ? provider.getAuthConfig() : Map.of();
-                Object headersObj = config.get("headers");
+                Object headersObj = config.get(ModelConstants.AuthConfigKey.HEADERS);
                 if (headersObj instanceof Map<?, ?> headers) {
                     headers.forEach((k, v) -> {
                         if (k != null && v != null) {
@@ -183,7 +167,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
                     });
                 }
             }
-            default -> requestBuilder.header("Authorization", "Bearer " + apiKey);
+            default -> requestBuilder.header(ModelConstants.HeaderName.AUTHORIZATION, "Bearer " + apiKey);
         }
     }
 
@@ -204,7 +188,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         try {
             return objectMapper.writeValueAsString(body);
         } catch (Exception e) {
-            throw new RuntimeException("构造请求体失败", e);
+            throw new BizException(ResultCode.LLM_API_ERROR, "构造 LLM 请求体失败", e);
         }
     }
 
@@ -245,20 +229,4 @@ public class OpenAiCompatibleProvider implements LlmProvider {
                 .build();
     }
 
-    private LlmStreamChunk parseStreamChunk(String json) throws IOException {
-        JsonNode root = objectMapper.readTree(json);
-        JsonNode choices = root.path("choices");
-        if (choices.isEmpty()) {
-            return LlmStreamChunk.builder().content("").build();
-        }
-        JsonNode delta = choices.get(0).path("delta");
-        String content = delta.path("content").asText("");
-        String finishReason = choices.get(0).path("finish_reason").asText(null);
-
-        return LlmStreamChunk.builder()
-                .content(content)
-                .finishReason(finishReason)
-                .finish(finishReason != null)
-                .build();
-    }
 }

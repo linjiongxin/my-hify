@@ -5,7 +5,7 @@ import com.hify.common.web.entity.PageResult;
 import com.hify.common.web.entity.Result;
 import com.hify.model.dto.ModelProviderCreateRequest;
 import com.hify.model.dto.ModelProviderUpdateRequest;
-import com.hify.model.entity.ModelProviderVO;
+import com.hify.model.vo.ModelProviderVO;
 import com.hify.model.service.ModelProviderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -45,11 +45,7 @@ public class ModelProviderController {
      */
     @GetMapping("/{id}")
     public Result<ModelProviderVO> detail(@PathVariable("id") Long id) {
-        ModelProviderVO vo = modelProviderService.getProviderDetail(id);
-        if (vo == null) {
-            return Result.error(404, "数据不存在");
-        }
-        return Result.success(vo);
+        return Result.success(modelProviderService.getProviderDetail(id));
     }
 
     /**

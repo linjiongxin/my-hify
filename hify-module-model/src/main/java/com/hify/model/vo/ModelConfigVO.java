@@ -1,4 +1,4 @@
-package com.hify.model.entity;
+package com.hify.model.vo;
 
 import lombok.Data;
 
@@ -13,7 +13,7 @@ import java.util.Map;
  * @author hify
  */
 @Data
-public class ModelVO implements Serializable {
+public class ModelConfigVO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
@@ -65,7 +65,7 @@ public class ModelVO implements Serializable {
     /**
      * 是否为默认模型
      */
-    private Boolean isDefault;
+    private Boolean defaultModel;
 
     /**
      * 是否启用

@@ -6,7 +6,7 @@ import com.hify.common.web.entity.PageResult;
 import com.hify.model.dto.ModelProviderCreateRequest;
 import com.hify.model.dto.ModelProviderUpdateRequest;
 import com.hify.model.entity.ModelProvider;
-import com.hify.model.entity.ModelProviderVO;
+import com.hify.model.vo.ModelProviderVO;
 
 /**
  * 模型提供商 Service

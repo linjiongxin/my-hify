@@ -1,7 +1,7 @@
 package com.hify.model.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.hify.model.entity.Model;
+import com.hify.model.entity.ModelConfig;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
@@ -10,5 +10,5 @@ import org.apache.ibatis.annotations.Mapper;
  * @author hify
  */
 @Mapper
-public interface ModelMapper extends BaseMapper<Model> {
+public interface ModelConfigMapper extends BaseMapper<ModelConfig> {
 }

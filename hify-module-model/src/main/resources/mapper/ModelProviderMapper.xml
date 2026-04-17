@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.hify.model.mapper.ModelProviderMapper">
 
-    <resultMap id="providerVOResultMap" type="com.hify.model.entity.ModelProviderVO">
+    <resultMap id="providerVOResultMap" type="com.hify.model.vo.ModelProviderVO">
         <id column="id" property="id"/>
         <result column="name" property="name"/>
         <result column="code" property="code"/>

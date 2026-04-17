@@ -3,10 +3,10 @@ package com.hify.model.controller;
 import com.hify.common.web.entity.PageParam;
 import com.hify.common.web.entity.PageResult;
 import com.hify.common.web.entity.Result;
-import com.hify.model.dto.ModelCreateRequest;
-import com.hify.model.dto.ModelUpdateRequest;
-import com.hify.model.entity.ModelVO;
-import com.hify.model.service.ModelService;
+import com.hify.model.dto.ModelConfigCreateRequest;
+import com.hify.model.dto.ModelConfigUpdateRequest;
+import com.hify.model.vo.ModelConfigVO;
+import com.hify.model.service.ModelConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -28,15 +28,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/model")
 @RequiredArgsConstructor
 @Validated
-public class ModelController {
+public class ModelConfigController {
 
-    private final ModelService modelService;
+    private final ModelConfigService modelService;
 
     /**
      * 分页列表
      */
     @GetMapping("/page")
-    public Result<PageResult<ModelVO>> page(@Valid PageParam pageParam) {
+    public Result<PageResult<ModelConfigVO>> page(@Valid PageParam pageParam) {
         return Result.success(modelService.pageModels(pageParam));
     }
 
@@ -44,19 +44,15 @@ public class ModelController {
      * 详情
      */
     @GetMapping("/{id}")
-    public Result<ModelVO> detail(@PathVariable("id") Long id) {
-        ModelVO vo = modelService.getModelDetail(id);
-        if (vo == null) {
-            return Result.error(404, "数据不存在");
-        }
-        return Result.success(vo);
+    public Result<ModelConfigVO> detail(@PathVariable("id") Long id) {
+        return Result.success(modelService.getModelDetail(id));
     }
 
     /**
      * 创建
      */
     @PostMapping
-    public Result<Long> create(@Valid @RequestBody ModelCreateRequest request) {
+    public Result<Long> create(@Valid @RequestBody ModelConfigCreateRequest request) {
         return Result.success(modelService.createModel(request));
     }
 
@@ -64,7 +60,7 @@ public class ModelController {
      * 更新
      */
     @PutMapping("/{id}")
-    public Result<Void> update(@PathVariable("id") Long id, @Valid @RequestBody ModelUpdateRequest request) {
+    public Result<Void> update(@PathVariable("id") Long id, @Valid @RequestBody ModelConfigUpdateRequest request) {
         modelService.updateModel(id, request);
         return Result.success();
     }

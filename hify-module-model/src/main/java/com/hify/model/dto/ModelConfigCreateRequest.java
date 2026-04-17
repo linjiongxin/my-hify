@@ -13,7 +13,7 @@ import java.util.Map;
  * @author hify
  */
 @Data
-public class ModelCreateRequest {
+public class ModelConfigCreateRequest {
 
     @NotNull(message = "提供商 ID 不能为空")
     private Long providerId;
@@ -34,7 +34,7 @@ public class ModelCreateRequest {
 
     private BigDecimal outputPricePer1m;
 
-    private Boolean isDefault = false;
+    private Boolean defaultModel = false;
 
     private Boolean enabled = true;
 

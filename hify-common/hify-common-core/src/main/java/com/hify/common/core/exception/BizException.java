@@ -45,4 +45,10 @@ public class BizException extends RuntimeException {
         this.message = message;
     }
 
+    public BizException(ResultCode resultCode, String message, Throwable cause) {
+        super(message, cause);
+        this.code = resultCode.getCode();
+        this.message = message;
+    }
+
 }

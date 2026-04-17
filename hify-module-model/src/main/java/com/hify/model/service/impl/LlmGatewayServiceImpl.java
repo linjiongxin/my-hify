@@ -1,17 +1,20 @@
 package com.hify.model.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.hify.common.core.enums.ResultCode;
+import com.hify.common.core.exception.BizException;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmChatResponse;
 import com.hify.model.api.dto.LlmStreamChunk;
-import com.hify.model.entity.Model;
+import com.hify.model.constant.ModelConstants;
+import com.hify.model.entity.ModelConfig;
 import com.hify.model.entity.ModelProvider;
 import com.hify.model.provider.LlmProvider;
 import com.hify.model.provider.LlmProviderFactory;
 import com.hify.model.provider.LlmProviderSemaphoreManager;
 import com.hify.model.service.LlmGatewayService;
+import com.hify.model.service.ModelConfigService;
 import com.hify.model.service.ModelProviderService;
-import com.hify.model.service.ModelService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,7 +33,7 @@ import java.util.function.Consumer;
 @Transactional(rollbackFor = Exception.class)
 public class LlmGatewayServiceImpl implements LlmGatewayService {
 
-    private final ModelService modelService;
+    private final ModelConfigService modelService;
     private final ModelProviderService modelProviderService;
     private final LlmProviderFactory providerFactory;
     private final LlmProviderSemaphoreManager semaphoreManager;
@@ -38,10 +41,10 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
     @Override
     @Transactional(readOnly = true)
     public LlmChatResponse chat(String modelId, LlmChatRequest request) {
-        Model model = getModel(modelId);
+        ModelConfig model = getModel(modelId);
         ModelProvider provider = modelProviderService.getById(model.getProviderId());
         if (provider == null || !Boolean.TRUE.equals(provider.getEnabled())) {
-            throw new IllegalStateException("模型提供商不可用: " + model.getProviderId());
+            throw new BizException(ResultCode.LLM_API_ERROR, "模型提供商不可用: " + model.getProviderId());
         }
 
         String protocolType = resolveProtocolType(request, provider);
@@ -57,7 +60,7 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
             return response;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("获取 LLM 调用许可被中断", e);
+            throw new BizException(ResultCode.LLM_API_ERROR, "获取 LLM 调用许可被中断", e);
         } finally {
             semaphoreManager.release(providerCode);
         }
@@ -65,10 +68,10 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
 
     @Override
     public void streamChat(String modelId, LlmChatRequest request, Consumer<LlmStreamChunk> callback) {
-        Model model = getModel(modelId);
+        ModelConfig model = getModel(modelId);
         ModelProvider provider = modelProviderService.getById(model.getProviderId());
         if (provider == null || !Boolean.TRUE.equals(provider.getEnabled())) {
-            throw new IllegalStateException("模型提供商不可用: " + model.getProviderId());
+            throw new BizException(ResultCode.LLM_API_ERROR, "模型提供商不可用: " + model.getProviderId());
         }
 
         String protocolType = resolveProtocolType(request, provider);
@@ -95,18 +98,18 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
             });
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("获取 LLM 调用许可被中断", e);
+            throw new BizException(ResultCode.LLM_API_ERROR, "获取 LLM 调用许可被中断", e);
         } finally {
             doRelease.run();
         }
     }
 
-    private Model getModel(String modelId) {
-        LambdaQueryWrapper<Model> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Model::getModelId, modelId);
-        Model model = modelService.getOne(wrapper);
+    private ModelConfig getModel(String modelId) {
+        LambdaQueryWrapper<ModelConfig> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ModelConfig::getModelId, modelId);
+        ModelConfig model = modelService.getOne(wrapper);
         if (model == null || !Boolean.TRUE.equals(model.getEnabled())) {
-            throw new IllegalArgumentException("模型不存在或已禁用: " + modelId);
+            throw new BizException(ResultCode.DATA_NOT_FOUND, "模型不存在或已禁用: " + modelId);
         }
         return model;
     }
@@ -115,6 +118,8 @@ public class LlmGatewayServiceImpl implements LlmGatewayService {
         if (request != null && request.getExtra() != null && request.getExtra().get("protocolType") != null) {
             return request.getExtra().get("protocolType");
         }
-        return provider.getProtocolType() != null ? provider.getProtocolType() : "openai_compatible";
+        return provider.getProtocolType() != null
+                ? provider.getProtocolType()
+                : ModelConstants.ProtocolType.OPENAI_COMPATIBLE;
     }
 }

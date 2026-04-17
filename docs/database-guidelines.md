@@ -151,6 +151,24 @@ ORDER BY idx_scan DESC;
 
 ---
 
+## 表名与实体类名映射规范
+
+**核心原则：数据库表名必须与对应的 Java Entity 类名保持一致（下划线命名 ↔ 大驼峰命名）。**
+
+| 表名 | Entity 类名 | 说明 |
+|------|------------|------|
+| `model_provider` | `ModelProvider` | 正确 |
+| `model_config` | `ModelConfig` | 正确 |
+| `model_config` | `Model` | **错误** — 表名与类名语义不一致 |
+| `sys_user` | `SysUser` | 正确 |
+
+**强制要求：**
+- 新建表时，Entity 类名必须能直接反推出表名（去掉下划线并转为大驼峰即可）
+- 禁止用泛化名称（如 `Model`、`Config`、`Data`）指代具体的业务表
+- Entity 类必须加 `@TableName("exact_table_name")` 显式声明映射关系
+
+---
+
 ## 建表模板
 
 ```sql
@@ -176,6 +194,29 @@ CREATE TRIGGER update_example_table_updated_at
 -- 4. 创建索引
 CREATE INDEX idx_example_table_created_by ON example_table(created_by);
 ```
+
+---
+
+## 配置来源规范
+
+### 单一来源原则
+
+**运行时配置必须以数据库为唯一可信来源，禁止在代码中硬编码业务可变配置。**
+
+| 场景 | 正确做法 | 错误做法 |
+|------|---------|---------|
+| 模型提供商列表 | 从 `model_provider` 表读取 | 写死在枚举或 `application.yml` |
+| 模型参数（温度、TopP） | 从 `model_config` 表读取 | 在代码里写死默认值 |
+| 认证方式切换 | 由 `auth_type` 字段驱动 | 用 `if-else` 硬编码判断 |
+| 开关/阈值 | 从配置表读取 | 用常量类写死 |
+
+**例外情况（允许硬编码）：**
+- 纯技术常量：HTTP 连接池大小、线程池核心数、超时秒数
+- 与业务无关的框架默认值
+
+**强制要求：**
+- 所有业务配置必须能在不重新部署的情况下，通过修改数据库生效
+- 需要缓存的配置，必须实现缓存刷新机制（如 @CacheEvict 或定时同步）
 
 ---
 

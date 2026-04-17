@@ -1,7 +1,7 @@
 package com.hify.server.health;
 
-import com.hify.model.entity.ModelProvider;
-import com.hify.model.service.ModelProviderService;
+import com.hify.model.api.ModelProviderApi;
+import com.hify.model.api.dto.ModelProviderDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.actuate.health.Health;
@@ -20,14 +20,12 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LlmProviderHealthIndicator implements HealthIndicator {
 
-    private final ModelProviderService modelProviderService;
+    private final ModelProviderApi modelProviderApi;
 
     @Override
     public Health health() {
         try {
-            List<ModelProvider> providers = modelProviderService.lambdaQuery()
-                    .eq(ModelProvider::getEnabled, true)
-                    .list();
+            List<ModelProviderDTO> providers = modelProviderApi.listEnabledProviders();
 
             if (providers.isEmpty()) {
                 return Health.down()

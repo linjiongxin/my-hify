@@ -18,7 +18,7 @@ import java.util.Map;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("model_config")
-public class Model extends BaseEntity {
+public class ModelConfig extends BaseEntity {
 
     private static final long serialVersionUID = 1L;
 
@@ -68,7 +68,8 @@ public class Model extends BaseEntity {
     /**
      * 是否为该提供商下的默认模型
      */
-    private Boolean isDefault;
+    @TableField("default_model")
+    private Boolean defaultModel;
 
     /**
      * 是否启用

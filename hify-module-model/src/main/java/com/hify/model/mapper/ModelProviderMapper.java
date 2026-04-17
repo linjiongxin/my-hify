@@ -3,7 +3,7 @@ package com.hify.model.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hify.model.entity.ModelProvider;
-import com.hify.model.entity.ModelProviderVO;
+import com.hify.model.vo.ModelProviderVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

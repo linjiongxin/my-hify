@@ -1,4 +1,4 @@
-package com.hify.model.entity;
+package com.hify.model.api.dto;
 
 import lombok.Data;
 
@@ -7,12 +7,12 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
- * 模型提供商视图对象
+ * 模型提供商 DTO
  *
  * @author hify
  */
 @Data
-public class ModelProviderVO implements Serializable {
+public class ModelProviderDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 

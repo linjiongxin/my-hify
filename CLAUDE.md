@@ -104,7 +104,9 @@ com.hify.xxx/
 ├── api/         # 对外暴露的唯一入口，其他模块只能调用这层
 ├── service/     # 业务逻辑实现
 ├── mapper/      # MyBatis 数据访问
-├── entity/      # Entity（数据库映射）、DTO（层间传输）
+├── entity/      # Entity（数据库映射）
+├── dto/         # 请求 DTO（Controller 入参）
+├── vo/          # 响应 VO（Controller 出参 / 层间传输）
 ├── controller/  # HTTP 接口（可选）
 └── config/      # 模块配置（可选）
 ```
@@ -116,7 +118,9 @@ com.hify.xxx/
 | **api/** | 定义接口和 DTO，供其他模块调用 | 返回 Entity、使用内部类 |
 | **service/** | 业务逻辑，实现 api 接口 | 直接调用其他模块 Service/Mapper |
 | **mapper/** | SQL 映射，仅限本模块使用 | 在其他模块中引用 |
-| **entity/** | 数据对象（Entity/DTO/VO） | 包含业务逻辑、跨模块共享 |
+| **entity/** | 数据库映射 Entity | 包含业务逻辑、跨模块共享 |
+| **dto/** | 请求 DTO（Controller 入参） | 返回给前端以外的层 |
+| **vo/** | 响应 VO（Controller 出参 / 层间传输） | 包含业务逻辑、跨模块共享 |
 | **controller/** | 接收参数、入参校验、权限检查、调用并返回 | 写业务逻辑、直接返回 Entity |
 
 ### 跨模块调用规则

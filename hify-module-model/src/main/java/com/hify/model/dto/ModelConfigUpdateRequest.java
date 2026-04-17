@@ -12,7 +12,7 @@ import java.util.Map;
  * @author hify
  */
 @Data
-public class ModelUpdateRequest {
+public class ModelConfigUpdateRequest {
 
     @NotBlank(message = "名称不能为空")
     private String name;
@@ -27,7 +27,7 @@ public class ModelUpdateRequest {
 
     private BigDecimal outputPricePer1m;
 
-    private Boolean isDefault;
+    private Boolean defaultModel;
 
     private Boolean enabled;
 

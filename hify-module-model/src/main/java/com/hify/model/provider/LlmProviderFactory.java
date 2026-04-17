@@ -1,5 +1,6 @@
 package com.hify.model.provider;
 
+import com.hify.model.constant.ModelConstants;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -32,7 +33,7 @@ public class LlmProviderFactory {
         LlmProvider provider = providerMap.get(code);
         if (provider == null) {
             // 默认使用 OpenAI 兼容协议
-            provider = providerMap.get("openai_compatible");
+            provider = providerMap.get(ModelConstants.ProtocolType.OPENAI_COMPATIBLE);
         }
         if (provider == null) {
             throw new IllegalArgumentException("不支持的 LLM Provider: " + code);
