@@ -156,6 +156,52 @@ private ModelProviderService modelProviderService;
 - [ ] **SQL 位置**：复杂查询必须写 XML，禁止 `@Select` 注解 SQL
 - [ ] **事务**：Service 方法加 `@Transactional`，读操作加 `readOnly = true`
 - [ ] **循环依赖**：出现循环依赖用 Spring 事件解耦，禁止双向注入
+- [ ] **测试覆盖**：新增功能必须配套单元测试，Service 层必测，PR 前测试通过
+
+## 测试规范（TDD）
+
+### 原则
+
+本项目的后端代码遵循**测试驱动开发（TDD）**：
+
+1. **先写测试，后写实现** —— 每个新功能、每个 bug 修复，必须先写失败的测试
+2. **红-绿-重构** —— 让测试失败（红）→ 写最小实现让测试通过（绿）→ 重构代码
+3. **测试即文档** —— 测试代码描述模块的契约和行为，优先可读性
+
+### 测试分层
+
+| 类型 | 范围 | 工具 | 位置 | 说明 |
+|------|------|------|------|------|
+| **单元测试** | 单个类/方法 | JUnit 5 + Mockito | `src/test/java/**` | 不启动 Spring 容器，毫秒级 |
+| **集成测试** | 多组件协作 | `@SpringBootTest` | `src/test/java/**` | 启动容器，验证装配和集成逻辑 |
+
+### 各层测试策略
+
+| 层级 | 测试重点 | Mock 策略 |
+|------|---------|-----------|
+| **api/** 接口 | 仅做契约断言，不重复测试实现 | 无需测试 |
+| **service/** | 核心业务逻辑、分支覆盖、异常处理 | Mock 依赖的 api/ 和 mapper |
+| **mapper/** | 复杂 SQL 的正确性（集成测试）| `@SpringBootTest` + 真实 PostgreSQL |
+| **controller/** | 入参校验、HTTP 状态码、异常映射 | Mock Service，WebTestClient |
+
+### 命名规范
+
+```
+被测类名 + Test
+
+方法名：should<行为>_when<条件>
+示例：
+  shouldThrowWhenProviderNotFound()
+  shouldReturnPagedModels_whenQueryByType()
+  shouldCascadeDeleteModels_whenProviderDeleted()
+```
+
+### 测试通过标准
+
+- **新增功能**：Service 层核心逻辑必须有单元测试，分支覆盖 ≥ 80%
+- **Bug 修复**：必须先写复现测试，再修复代码
+- **PR 提交前**：`mvn test` 必须全部通过，不允许跳过
+- **禁止**：不写测试直接提交实现代码；测试通过后再改实现却不更新测试
 
 ## 关键技术决策
 
@@ -305,6 +351,7 @@ postgresql_connections_active > 8 # 数据库连接过多
 |------|------|----------|
 | [docs/database-guidelines.md](docs/database-guidelines.md) | PostgreSQL 建表规范、字段类型、索引、分页 | 编写实体类、Mapper、建表 SQL |
 | [docs/java-coding-standards.md](docs/java-coding-standards.md) | 阿里巴巴编码规范（命名、异常、日志、并发） | 编写所有 Java 代码 |
+| [docs/integration-testing.md](docs/integration-testing.md) | 集成测试架构、基类、数据隔离、编写规范 | 编写 Mapper/Service 集成测试、E2E 测试 |
 
 ## 开发环境
 

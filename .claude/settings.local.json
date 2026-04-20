@@ -123,7 +123,9 @@
       "Bash(time lsof:*)",
       "Bash(echo \"exit: $?\")",
       "Bash(time ps:*)",
-      "Bash(node /tmp/screenshot_provider.mjs)"
+      "Bash(node /tmp/screenshot_provider.mjs)",
+      "Bash(docker cp *)",
+      "Bash(./scripts/init-test-db.sh *)"
     ]
   }
 }
