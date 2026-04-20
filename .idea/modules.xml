@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/hify-common/hify-common-core/hify-common-core.iml" filepath="$PROJECT_DIR$/hify-common/hify-common-core/hify-common-core.iml" />
       <module fileurl="file://$PROJECT_DIR$/hify-common/hify-common-web/hify-common-web.iml" filepath="$PROJECT_DIR$/hify-common/hify-common-web/hify-common-web.iml" />
       <module fileurl="file://$PROJECT_DIR$/hify-module-agent/hify-module-agent.iml" filepath="$PROJECT_DIR$/hify-module-agent/hify-module-agent.iml" />
       <module fileurl="file://$PROJECT_DIR$/hify-module-chat/hify-module-chat.iml" filepath="$PROJECT_DIR$/hify-module-chat/hify-module-chat.iml" />
@@ -11,7 +10,6 @@
       <module fileurl="file://$PROJECT_DIR$/hify-module-rag/hify-module-rag.iml" filepath="$PROJECT_DIR$/hify-module-rag/hify-module-rag.iml" />
       <module fileurl="file://$PROJECT_DIR$/hify-module-workflow/hify-module-workflow.iml" filepath="$PROJECT_DIR$/hify-module-workflow/hify-module-workflow.iml" />
       <module fileurl="file://$PROJECT_DIR$/hify-server/hify-server.iml" filepath="$PROJECT_DIR$/hify-server/hify-server.iml" />
-      <module fileurl="file://$PROJECT_DIR$/my-hify.iml" filepath="$PROJECT_DIR$/my-hify.iml" />
     </modules>
   </component>
 </project>
