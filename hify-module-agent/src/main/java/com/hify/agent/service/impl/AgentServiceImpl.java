@@ -11,6 +11,9 @@ import com.hify.agent.entity.AgentTool;
 import com.hify.agent.mapper.AgentMapper;
 import com.hify.agent.mapper.AgentMcpBindingMapper;
 import com.hify.agent.mapper.AgentToolMapper;
+import com.hify.agent.api.AgentApi;
+import com.hify.agent.api.dto.AgentDTO;
+import com.hify.agent.api.dto.AgentToolDTO;
 import com.hify.agent.service.AgentService;
 import com.hify.agent.vo.AgentToolVO;
 import com.hify.agent.vo.AgentVO;
@@ -33,7 +36,7 @@ import java.util.List;
  */
 @Service
 @Transactional(rollbackFor = Exception.class)
-public class AgentServiceImpl implements AgentService {
+public class AgentServiceImpl implements AgentService, AgentApi {
 
     private final AgentMapper agentMapper;
     private final AgentToolMapper agentToolMapper;
@@ -206,6 +209,53 @@ public class AgentServiceImpl implements AgentService {
             throw new BizException(ResultCode.DATA_NOT_FOUND, "工具不属于该 Agent");
         }
         agentToolMapper.deleteById(toolId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AgentDTO getAgentById(Long id) {
+        AgentVO vo = getAgentDetail(id);
+        if (vo == null) {
+            return null;
+        }
+        AgentDTO dto = new AgentDTO();
+        BeanUtils.copyProperties(vo, dto);
+        if (vo.getTools() != null) {
+            dto.setTools(vo.getTools().stream().map(this::toToolDtoFromVo).toList());
+        }
+        return dto;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AgentDTO> listEnabledAgents() {
+        LambdaQueryWrapper<Agent> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Agent::getEnabled, true);
+        List<Agent> agents = agentMapper.selectList(wrapper);
+        return agents.stream().map(this::toDto).toList();
+    }
+
+    private AgentDTO toDto(Agent agent) {
+        AgentDTO dto = new AgentDTO();
+        BeanUtils.copyProperties(agent, dto);
+        // 加载工具列表
+        LambdaQueryWrapper<AgentTool> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AgentTool::getAgentId, agent.getId()).orderByAsc(AgentTool::getSortOrder);
+        List<AgentTool> tools = agentToolMapper.selectList(wrapper);
+        dto.setTools(tools.stream().map(this::toToolDto).toList());
+        return dto;
+    }
+
+    private AgentToolDTO toToolDto(AgentTool tool) {
+        AgentToolDTO dto = new AgentToolDTO();
+        BeanUtils.copyProperties(tool, dto);
+        return dto;
+    }
+
+    private AgentToolDTO toToolDtoFromVo(AgentToolVO vo) {
+        AgentToolDTO dto = new AgentToolDTO();
+        BeanUtils.copyProperties(vo, dto);
+        return dto;
     }
 
     private AgentVO toVO(Agent agent) {
