@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS agent_tool (
     agent_id BIGINT NOT NULL,
     tool_name VARCHAR(64) NOT NULL,
     tool_type VARCHAR(32) NOT NULL,
+    tool_impl VARCHAR(128),
     config_json JSONB,
     enabled BOOLEAN DEFAULT TRUE,
     sort_order INT DEFAULT 0,
@@ -166,6 +167,24 @@ CREATE TRIGGER update_agent_tool_updated_at
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE INDEX idx_agent_tool_agent_id ON agent_tool(agent_id);
+
+-- ========================================
+-- MCP 绑定模块
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS agent_mcp_binding (
+    id BIGINT PRIMARY KEY,
+    agent_id BIGINT NOT NULL,
+    mcp_server_id BIGINT NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE INDEX idx_agent_mcp_binding_agent_id ON agent_mcp_binding(agent_id);
 
 -- ========================================
 -- 对话模块（前缀: chat_）
