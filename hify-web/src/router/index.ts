@@ -22,7 +22,7 @@ const router = createRouter({
     {
       path: '/agents',
       name: 'agents',
-      component: () => import('../views/PlaceholderView.vue'),
+      component: () => import('../views/agent/AgentList.vue'),
     },
     {
       path: '/knowledge',

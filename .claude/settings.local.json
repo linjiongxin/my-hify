@@ -125,7 +125,13 @@
       "Bash(time ps:*)",
       "Bash(node /tmp/screenshot_provider.mjs)",
       "Bash(docker cp *)",
-      "Bash(./scripts/init-test-db.sh *)"
+      "Bash(./scripts/init-test-db.sh *)",
+      "Bash(kill 7987)",
+      "Bash(awk '{print $2}')",
+      "Bash(xargs -I{} lsof -p {})",
+      "Bash(lsof -ti:5173)",
+      "Bash(lsof -ti:8080,5173)",
+      "Bash(read id *)"
     ]
   }
 }
