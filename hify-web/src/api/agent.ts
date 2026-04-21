@@ -54,7 +54,7 @@ export interface AgentToolBatchRequest {
 }
 
 export function getAgentPage(params: HifyPageParams): Promise<PageResult<Agent>> {
-  return get('/agent/page', {
+  return get('/agent', {
     params: {
       pageNum: params.current,
       pageSize: params.size,

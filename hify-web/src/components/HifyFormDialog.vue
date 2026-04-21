@@ -128,4 +128,13 @@ defineExpose({
   justify-content: flex-end;
   gap: var(--space-3);
 }
+
+/* 确保 el-select 下拉框在 dialog 之上 */
+:deep(.el-select-dropdown) {
+  z-index: 3000 !important;
+}
+
+:deep(.el-select-dropdown__list) {
+  z-index: 3000 !important;
+}
 </style>
