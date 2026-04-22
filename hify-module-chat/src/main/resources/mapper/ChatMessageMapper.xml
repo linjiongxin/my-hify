@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hify.chat.mapper.ChatMessageMapper">
+
+    <select id="selectHistoryBySessionId" resultType="com.hify.chat.entity.ChatMessage">
+        SELECT *
+        FROM chat_message
+        WHERE session_id = #{sessionId}
+          AND deleted = FALSE
+          AND status = 'completed'
+        ORDER BY seq ASC
+    </select>
+
+    <select id="selectMaxSeqBySessionId" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(seq), 0)
+        FROM chat_message
+        WHERE session_id = #{sessionId}
+          AND deleted = FALSE
+    </select>
+
+</mapper>

@@ -21,6 +21,12 @@
         </dependency>
 
         <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
             <groupId>com.hify</groupId>
             <artifactId>hify-module-model</artifactId>
         </dependency>

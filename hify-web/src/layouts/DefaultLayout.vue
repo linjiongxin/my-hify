@@ -7,7 +7,7 @@ const route = useRoute()
 const isCollapsed = ref(false)
 
 const menuItems = [
-  { title: '对话', icon: ChatDotRound, path: '/' },
+  { title: '对话', icon: ChatDotRound, path: '/chat' },
   { title: '模型提供商', icon: OfficeBuilding, path: '/providers' },
   { title: '模型管理', icon: Setting, path: '/models' },
   { title: 'Agent 管理', icon: User, path: '/agents' },
@@ -17,6 +17,7 @@ const menuItems = [
 
 const breadcrumbMap: Record<string, string> = {
   home: '首页',
+  chat: '对话',
   models: '模型配置',
   providers: '模型提供商',
   agents: 'Agent 管理',
