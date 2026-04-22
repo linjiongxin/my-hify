@@ -45,7 +45,7 @@ const columns = [
 ]
 
 const rules: FormRules = {
-  providerId: [{ required: true, message: '请选择提供商', trigger: 'change', type: 'number' }],
+  providerId: [{ required: true, message: '请选择提供商', trigger: 'change' }],
   name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
   modelId: [{ required: true, message: '请输入模型 ID', trigger: 'blur' }],
 }
