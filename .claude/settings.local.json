@@ -147,7 +147,15 @@
       "Bash(node *)",
       "WebFetch(domain:platform.minimaxi.com)",
       "Bash(psql *)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(cat vite.config.ts)",
+      "Bash(cat vite.config.js)",
+      "Bash(grep -E \"\\\\.java$\")",
+      "Bash(pip3 show *)",
+      "Bash(pkill -f \"spring-boot:run\")",
+      "Bash(npm list *)",
+      "Bash(nohup mvn *)",
+      "Bash(pkill -f \"spring-boot\")"
     ]
   }
 }

@@ -451,9 +451,19 @@ CREATE INDEX idx_mcp_tool_server_id ON mcp_tool(server_id);
 -- 初始数据
 -- ========================================
 
--- 管理员用户（密码: admin123，生产环境必须修改）
+-- 管理员用户（密码: admin123）
 INSERT INTO sys_user (id, username, password, nickname, email, status)
-VALUES (1, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '管理员', 'admin@hify.local', 1)
+VALUES (1, 'admin', '$2a$10$Vxa61cLimMWxsa5gaFe7IOThDczdH0KpNGxTPBD9pfYK7hWtuTzvS', '管理员', 'admin@hify.local', 1)
+ON CONFLICT (username) DO NOTHING;
+
+-- 测试用户（密码: test123）
+INSERT INTO sys_user (id, username, password, nickname, email, status)
+VALUES (2, 'test', '$2a$10$Vxa61cLimMWxsa5gaFe7IOThDczdH0KpNGxTPBD9pfYK7hWtuTzvS', '测试用户', 'test@hify.local', 1)
+ON CONFLICT (username) DO NOTHING;
+
+-- 开发用户（密码: dev123）
+INSERT INTO sys_user (id, username, password, nickname, email, status)
+VALUES (3, 'dev', '$2a$10$Vxa61cLimMWxsa5gaFe7IOThDczdH0KpNGxTPBD9pfYK7hWtuTzvS', '开发人员', 'dev@hify.local', 1)
 ON CONFLICT (username) DO NOTHING;
 
 -- 模型提供商

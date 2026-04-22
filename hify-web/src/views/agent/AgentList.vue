@@ -18,14 +18,16 @@ import {
   type Agent,
   type ToolItem,
 } from '@/api/agent'
+import { getAllEnabledModels } from '@/api/model'
 
-const modelOptions = [
-  { label: 'GPT-4o', value: 'gpt-4o' },
-  { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
-  { label: 'DeepSeek V3', value: 'deepseek-chat' },
-  { label: 'DeepSeek R1', value: 'deepseek-reasoner' },
-  { label: 'Qwen2.5-72B', value: 'qwen2.5-72b-instruct' },
-]
+const modelOptions = ref<{ label: string; value: string }[]>([])
+
+async function loadModelOptions() {
+  const models = await getAllEnabledModels()
+  modelOptions.value = models.map(m => ({ label: m.name, value: m.modelId }))
+}
+
+loadModelOptions()
 
 const toolTypeOptions = [
   { label: '内置工具', value: 'builtin' },

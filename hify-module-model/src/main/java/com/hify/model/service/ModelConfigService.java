@@ -39,4 +39,9 @@ public interface ModelConfigService extends IService<ModelConfig> {
      * 删除模型
      */
     void deleteModel(Long id);
+
+    /**
+     * 获取所有启用的模型
+     */
+    java.util.List<ModelConfigVO> listAllEnabledModels();
 }

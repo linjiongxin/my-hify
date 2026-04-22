@@ -59,7 +59,8 @@ export function streamChat(
   onDone: () => void,
   onError: (error: string) => void
 ): () => void {
-  const url = `/api/chat/stream/${sessionId}?message=${encodeURIComponent(message)}`
+  const token = localStorage.getItem('token') || ''
+  const url = `/api/chat/stream/${sessionId}?message=${encodeURIComponent(message)}&token=${encodeURIComponent(token)}`
   const eventSource = new EventSource(url)
 
   eventSource.addEventListener('message', (e) => {

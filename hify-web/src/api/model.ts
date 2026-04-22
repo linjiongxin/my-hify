@@ -70,3 +70,7 @@ export function updateModel(id: number, data: ModelConfigUpdateRequest): Promise
 export function deleteModel(id: number): Promise<void> {
   return del(`/model/${id}`)
 }
+
+export function getAllEnabledModels(): Promise<ModelConfig[]> {
+  return get('/model/all')
+}

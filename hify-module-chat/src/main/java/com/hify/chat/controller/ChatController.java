@@ -7,6 +7,8 @@ import com.hify.chat.service.ChatSessionService;
 import com.hify.chat.vo.ChatMessageVO;
 import com.hify.chat.vo.ChatSessionVO;
 import com.hify.common.web.entity.Result;
+import com.hify.common.web.security.CurrentUser;
+import com.hify.common.web.security.JwtUtil;
 import com.hify.common.web.security.UserContext;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +39,7 @@ public class ChatController {
 
     private final ChatSessionService chatSessionService;
     private final ChatMessageService chatMessageService;
+    private final JwtUtil jwtUtil;
 
     /**
      * 创建会话
@@ -82,14 +85,37 @@ public class ChatController {
 
     /**
      * 流式对话（SSE）
+     * 注意：SSE 无法通过 JS 设置自定义 Header，故通过 query 参数接收 token
      */
     @GetMapping(value = "/stream/{sessionId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamChat(@PathVariable("sessionId") Long sessionId, @RequestParam("message") String message) {
+    public SseEmitter streamChat(
+            @PathVariable("sessionId") Long sessionId,
+            @RequestParam("message") String message,
+            @RequestParam(value = "token", required = false) String token) {
         SseEmitter emitter = new SseEmitter(0L);
 
-        emitter.onCompletion(() -> log.debug("SSE completed, sessionId={}", sessionId));
-        emitter.onTimeout(() -> log.warn("SSE timeout, sessionId={}", sessionId));
-        emitter.onError(e -> log.error("SSE error, sessionId={}", sessionId, e));
+        // 如果前端传了 token，尝试解析用户
+        if (token != null && !token.isBlank()) {
+            try {
+                CurrentUser user = jwtUtil.parseToken(token);
+                UserContext.set(user);
+            } catch (Exception e) {
+                // token 解析失败，忽略
+            }
+        }
+
+        emitter.onCompletion(() -> {
+            UserContext.clear();
+            log.debug("SSE completed, sessionId={}", sessionId);
+        });
+        emitter.onTimeout(() -> {
+            UserContext.clear();
+            log.warn("SSE timeout, sessionId={}", sessionId);
+        });
+        emitter.onError(e -> {
+            UserContext.clear();
+            log.error("SSE error, sessionId={}", sessionId, e);
+        });
 
         chatMessageService.streamChat(UserContext.getUserId(), sessionId, message, emitter);
         return emitter;

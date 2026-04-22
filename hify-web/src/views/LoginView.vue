@@ -23,7 +23,7 @@ async function handleLogin() {
   try {
     const res: any = await post('/auth/login', form)
     // 保存 token 到 localStorage
-    localStorage.setItem('token', res.token || res)
+    localStorage.setItem('token', res.accessToken || res.token || res)
     localStorage.setItem('userId', String(res.userId || res.id || 1))
     localStorage.setItem('username', res.username || form.username)
     ElMessage.success('登录成功')

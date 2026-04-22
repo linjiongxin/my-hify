@@ -93,6 +93,16 @@ public class ModelConfigServiceImpl extends ServiceImpl<ModelConfigMapper, Model
         }
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<ModelConfigVO> listAllEnabledModels() {
+        LambdaQueryWrapper<ModelConfig> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ModelConfig::getEnabled, true)
+                .orderByAsc(ModelConfig::getSortOrder)
+                .orderByAsc(ModelConfig::getId);
+        return list(wrapper).stream().map(this::toVO).toList();
+    }
+
     private ModelConfigVO toVO(ModelConfig model) {
         ModelConfigVO vo = new ModelConfigVO();
         BeanUtils.copyProperties(model, vo);

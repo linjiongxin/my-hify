@@ -41,6 +41,14 @@ public class ModelConfigController {
     }
 
     /**
+     * 获取所有启用的模型（用于下拉选择）
+     */
+    @GetMapping("/all")
+    public Result<java.util.List<ModelConfigVO>> listAllEnabled() {
+        return Result.success(modelService.listAllEnabledModels());
+    }
+
+    /**
      * 详情
      */
     @GetMapping("/{id}")
