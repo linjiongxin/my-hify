@@ -131,7 +131,9 @@
       "Bash(xargs -I{} lsof -p {})",
       "Bash(lsof -ti:5173)",
       "Bash(lsof -ti:8080,5173)",
-      "Bash(read id *)"
+      "Bash(read id *)",
+      "Bash(docker-compose ps *)",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -p 5432 -l)"
     ]
   }
 }

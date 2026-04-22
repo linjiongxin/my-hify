@@ -6,11 +6,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
- * LLM 聊天响应
- *
- * @author hify
+ * LLM 聊天响应（非流式）
  */
 @Data
 @Builder
@@ -26,7 +25,17 @@ public class LlmChatResponse implements Serializable {
     private String content;
 
     /**
-     * 结束原因
+     * 推理/思考过程内容
+     */
+    private String reasoningContent;
+
+    /**
+     * 工具调用请求列表
+     */
+    private List<LlmToolCall> toolCalls;
+
+    /**
+     * 结束原因: stop / length / content_filter / tool_calls
      */
     private String finishReason;
 

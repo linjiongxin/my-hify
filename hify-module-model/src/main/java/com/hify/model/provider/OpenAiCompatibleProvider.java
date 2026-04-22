@@ -2,26 +2,20 @@ package com.hify.model.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.hify.common.core.enums.ResultCode;
 import com.hify.common.core.exception.BizException;
-import com.hify.model.api.dto.LlmChatRequest;
-import com.hify.model.api.dto.LlmChatResponse;
-import com.hify.model.api.dto.LlmMessage;
-import com.hify.model.api.dto.LlmStreamChunk;
-import com.hify.model.api.dto.LlmUsage;
+import com.hify.model.api.dto.*;
 import com.hify.model.constant.ModelConstants;
 import com.hify.model.entity.ModelProvider;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
+import okhttp3.*;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSources;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +24,7 @@ import java.util.function.Consumer;
 
 /**
  * OpenAI 兼容协议 Provider
- * <p>覆盖 OpenAI、DeepSeek、通义千问等</p>
+ * <p>覆盖 OpenAI、DeepSeek、通义千问、Kimi、GLM、Gemini、Ollama 等</p>
  *
  * @author hify
  */
@@ -46,7 +40,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         this.baseClient = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
-                .connectionPool(new okhttp3.ConnectionPool(200, 5, TimeUnit.MINUTES))
+                .connectionPool(new ConnectionPool(200, 5, TimeUnit.MINUTES))
                 .build();
     }
 
@@ -66,7 +60,6 @@ public class OpenAiCompatibleProvider implements LlmProvider {
 
     @Override
     public boolean supports(String modelId) {
-        // 作为默认兼容协议，支持所有未被特定 Provider 处理的模型
         return true;
     }
 
@@ -83,15 +76,12 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         applyAuthHeaders(requestBuilder, provider, request);
 
         try (Response response = getClient(false).newCall(requestBuilder.build()).execute()) {
-            String bodyString = null;
-            if (response.body() != null) {
-                bodyString = response.body().string();
-            }
+            String bodyString = response.body() != null ? response.body().string() : "{}";
             if (!response.isSuccessful()) {
                 throw new BizException(ResultCode.LLM_API_ERROR,
-                        "LLM API 调用失败: " + response.code() + ", body=" + (bodyString != null ? bodyString : ""));
+                        "LLM API 调用失败: " + response.code() + ", body=" + bodyString);
             }
-            return parseChatResponse(bodyString != null ? bodyString : "{}");
+            return parseChatResponse(bodyString);
         } catch (IOException e) {
             throw new BizException(ResultCode.LLM_API_ERROR, "LLM API 请求异常", e);
         }
@@ -114,8 +104,9 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         factory.newEventSource(requestBuilder.build(), new OpenAiSseEventListener(callback, objectMapper));
     }
 
+    // ==================== 私有方法 ====================
+
     private String resolveApiUrl(ModelProvider provider, LlmChatRequest request) {
-        // 优先从请求扩展参数中读取运行时覆盖
         if (request != null && request.getExtra() != null && request.getExtra().get("apiBaseUrl") != null) {
             return request.getExtra().get("apiBaseUrl");
         }
@@ -144,16 +135,11 @@ public class OpenAiCompatibleProvider implements LlmProvider {
             case ModelConstants.AuthType.API_KEY -> {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> config = provider.getAuthConfig() != null ? provider.getAuthConfig() : Map.of();
-                String headerName = config.get(ModelConstants.AuthConfigKey.HEADER_NAME) != null
-                        ? config.get(ModelConstants.AuthConfigKey.HEADER_NAME).toString()
-                        : ModelConstants.HeaderName.API_KEY;
-                String prefix = config.get(ModelConstants.AuthConfigKey.PREFIX) != null
-                        ? config.get(ModelConstants.AuthConfigKey.PREFIX).toString()
-                        : "";
+                String headerName = config.getOrDefault(ModelConstants.AuthConfigKey.HEADER_NAME, ModelConstants.HeaderName.API_KEY).toString();
+                String prefix = config.getOrDefault(ModelConstants.AuthConfigKey.PREFIX, "").toString();
                 requestBuilder.header(headerName, prefix + apiKey);
             }
             case ModelConstants.AuthType.NONE -> {
-                // 不添加认证头
             }
             case ModelConstants.AuthType.CUSTOM -> {
                 @SuppressWarnings("unchecked")
@@ -176,6 +162,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         body.put("model", modelId);
         body.put("messages", toOpenAiMessages(request.getMessages()));
         body.put("stream", stream);
+
         if (request.getTemperature() != null) {
             body.put("temperature", request.getTemperature());
         }
@@ -185,6 +172,16 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         if (request.getTopP() != null) {
             body.put("top_p", request.getTopP());
         }
+        if (request.getReasoningEffort() != null) {
+            body.put("reasoning_effort", request.getReasoningEffort());
+        }
+        if (request.getTools() != null && !request.getTools().isEmpty()) {
+            body.put("tools", request.getTools());
+        }
+        if (request.getToolChoice() != null) {
+            body.put("tool_choice", request.getToolChoice());
+        }
+
         try {
             return objectMapper.writeValueAsString(body);
         } catch (Exception e) {
@@ -192,15 +189,63 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         }
     }
 
-    private List<Map<String, String>> toOpenAiMessages(List<LlmMessage> messages) {
-        return messages.stream()
-                .map(m -> {
-                    Map<String, String> map = new HashMap<>();
-                    map.put("role", m.getRole());
-                    map.put("content", m.getContent());
-                    return map;
-                })
-                .toList();
+    @SuppressWarnings("unchecked")
+    private List<Object> toOpenAiMessages(List<LlmMessage> messages) {
+        List<Object> result = new ArrayList<>();
+        for (LlmMessage m : messages) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("role", m.getRole());
+
+            // 多模态 content parts
+            if (m.getContentParts() != null && !m.getContentParts().isEmpty()) {
+                List<Map<String, Object>> parts = new ArrayList<>();
+                for (LlmContentPart part : m.getContentParts()) {
+                    Map<String, Object> partMap = new HashMap<>();
+                    partMap.put("type", part.getType());
+                    if ("text".equals(part.getType())) {
+                        partMap.put("text", part.getText());
+                    } else if ("image_url".equals(part.getType()) && part.getImageUrl() != null) {
+                        Map<String, Object> imageUrlMap = new HashMap<>();
+                        imageUrlMap.put("url", part.getImageUrl().getUrl());
+                        if (part.getImageUrl().getDetail() != null) {
+                            imageUrlMap.put("detail", part.getImageUrl().getDetail());
+                        }
+                        partMap.put("image_url", imageUrlMap);
+                    }
+                    parts.add(partMap);
+                }
+                map.put("content", parts);
+            } else {
+                map.put("content", m.getContent());
+            }
+
+            // tool_calls (assistant)
+            if (m.getToolCalls() != null && !m.getToolCalls().isEmpty()) {
+                List<Map<String, Object>> toolCalls = new ArrayList<>();
+                for (LlmToolCall tc : m.getToolCalls()) {
+                    Map<String, Object> tcMap = new HashMap<>();
+                    tcMap.put("id", tc.getId());
+                    tcMap.put("type", tc.getType());
+                    Map<String, Object> function = new HashMap<>();
+                    function.put("name", tc.getName());
+                    function.put("arguments", tc.getArguments());
+                    tcMap.put("function", function);
+                    toolCalls.add(tcMap);
+                }
+                map.put("tool_calls", toolCalls);
+            }
+
+            // tool_call_id (tool)
+            if (m.getToolCallId() != null) {
+                map.put("tool_call_id", m.getToolCallId());
+            }
+            if (m.getName() != null) {
+                map.put("name", m.getName());
+            }
+
+            result.add(map);
+        }
+        return result;
     }
 
     private LlmChatResponse parseChatResponse(String json) throws IOException {
@@ -209,24 +254,57 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         if (choices.isEmpty()) {
             return LlmChatResponse.builder().content("").build();
         }
-        String content = choices.get(0).path("message").path("content").asText("");
-        String finishReason = choices.get(0).path("finish_reason").asText();
 
-        LlmUsage usage = null;
-        JsonNode usageNode = root.path("usage");
-        if (!usageNode.isMissingNode()) {
-            usage = new LlmUsage(
-                    usageNode.path("prompt_tokens").asLong(),
-                    usageNode.path("completion_tokens").asLong(),
-                    usageNode.path("total_tokens").asLong()
-            );
+        JsonNode firstChoice = choices.get(0);
+        JsonNode message = firstChoice.path("message");
+        String content = message.path("content").asText("");
+        String finishReason = firstChoice.path("finish_reason").asText();
+
+        // reasoning_content (DeepSeek R1)
+        String reasoningContent = message.path("reasoning_content").asText(null);
+        if (reasoningContent == null) {
+            reasoningContent = root.path("reasoning_content").asText(null);
         }
+
+        // tool_calls
+        List<LlmToolCall> toolCalls = parseToolCalls(message.path("tool_calls"));
+
+        LlmUsage usage = parseUsage(root.path("usage"));
 
         return LlmChatResponse.builder()
                 .content(content)
+                .reasoningContent(reasoningContent)
+                .toolCalls(toolCalls)
                 .finishReason(finishReason)
                 .usage(usage)
                 .build();
     }
 
+    static List<LlmToolCall> parseToolCalls(JsonNode toolCallsNode) {
+        if (toolCallsNode == null || toolCallsNode.isMissingNode() || !toolCallsNode.isArray()) {
+            return null;
+        }
+        List<LlmToolCall> result = new ArrayList<>();
+        for (JsonNode tc : toolCallsNode) {
+            LlmToolCall call = LlmToolCall.builder()
+                    .id(tc.path("id").asText(null))
+                    .type(tc.path("type").asText("function"))
+                    .name(tc.path("function").path("name").asText(null))
+                    .arguments(tc.path("function").path("arguments").asText(null))
+                    .build();
+            result.add(call);
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    static LlmUsage parseUsage(JsonNode usageNode) {
+        if (usageNode == null || usageNode.isMissingNode()) {
+            return null;
+        }
+        return new LlmUsage(
+                usageNode.path("prompt_tokens").asLong(),
+                usageNode.path("completion_tokens").asLong(),
+                usageNode.path("total_tokens").asLong()
+        );
+    }
 }

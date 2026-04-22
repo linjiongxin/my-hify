@@ -194,9 +194,11 @@ CREATE TABLE IF NOT EXISTS chat_session (
     id BIGINT PRIMARY KEY,
     user_id BIGINT NOT NULL,
     agent_id BIGINT,
-    title VARCHAR(128),
+    title VARCHAR(200),
     model_id VARCHAR(64),
-    status VARCHAR(16) DEFAULT 'active',
+    status VARCHAR(20) DEFAULT 'active',
+    message_count INT DEFAULT 0,
+    last_message_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -210,19 +212,21 @@ CREATE TRIGGER update_chat_session_updated_at
 
 CREATE INDEX idx_chat_session_user_id ON chat_session(user_id);
 CREATE INDEX idx_chat_session_agent_id ON chat_session(agent_id);
-CREATE INDEX idx_chat_session_created_at ON chat_session(created_at);
+CREATE INDEX idx_chat_session_last_message_at ON chat_session(last_message_at DESC);
 
 CREATE TABLE IF NOT EXISTS chat_message (
     id BIGINT PRIMARY KEY,
     session_id BIGINT NOT NULL,
+    seq INT NOT NULL DEFAULT 0,
     role VARCHAR(20) NOT NULL,
     content TEXT,
-    tool_calls_json JSONB,
-    tool_call_id VARCHAR(64),
-    usage_json JSONB,
-    model_id VARCHAR(64),
-    status VARCHAR(16) DEFAULT 'completed',
-    error_msg TEXT,
+    status VARCHAR(20) DEFAULT 'streaming',
+    finish_reason VARCHAR(20),
+    duration_ms INT,
+    input_tokens INT,
+    output_tokens INT,
+    model VARCHAR(100),
+    metadata JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -235,7 +239,9 @@ CREATE TRIGGER update_chat_message_updated_at
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE INDEX idx_chat_message_session_id ON chat_message(session_id);
+CREATE INDEX idx_chat_message_seq ON chat_message(session_id, seq);
 CREATE INDEX idx_chat_message_created_at ON chat_message(created_at);
+CREATE INDEX gin_chat_message_metadata ON chat_message USING GIN (metadata);
 
 -- ========================================
 -- RAG 模块（前缀: rag_）
@@ -457,7 +463,8 @@ VALUES
 (2, 'DeepSeek', 'deepseek', 'openai_compatible', 'https://api.deepseek.com/v1', 'BEARER', '', '{}', true, 2),
 (3, 'Ollama', 'ollama', 'openai_compatible', 'http://localhost:11434/v1', 'NONE', '', '{}', true, 99),
 (4, '通义千问', 'qwen', 'openai_compatible', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'BEARER', '', '{}', true, 3),
-(5, 'Azure OpenAI', 'azure_openai', 'openai_compatible', 'https://your-resource.openai.azure.com/openai/deployments', 'API_KEY', '', '{"headerName":"api-key","prefix":""}', true, 4);
+(5, 'Azure OpenAI', 'azure_openai', 'openai_compatible', 'https://your-resource.openai.azure.com/openai/deployments', 'API_KEY', '', '{"headerName":"api-key","prefix":""}', true, 4),
+(6, 'Claude (Anthropic)', 'anthropic', 'anthropic', 'https://api.anthropic.com', 'API_KEY', '', '{"headerName":"x-api-key","prefix":""}', true, 5);
 
 -- 模型
 INSERT INTO model_config (id, provider_id, name, model_id, max_tokens, context_window, capabilities, default_model, enabled)
@@ -470,7 +477,9 @@ VALUES
 (6, 3, 'Llama 3.1', 'llama3.1', 4096, 128000, '{"chat":true,"streaming":true,"vision":false,"toolCalling":false,"reasoning":false,"jsonMode":false}', true, true),
 (7, 4, 'Qwen2.5-72B', 'qwen2.5-72b-instruct', 8192, 131072, '{"chat":true,"streaming":true,"vision":false,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true),
 (8, 4, 'Qwen-VL-Max', 'qwen-vl-max', 2048, 32768, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', false, true),
-(9, 5, 'GPT-4o (Azure)', 'gpt-4o-azure', 4096, 128000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true);
+(9, 5, 'GPT-4o (Azure)', 'gpt-4o-azure', 4096, 128000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true),
+(10, 6, 'Claude Sonnet 4.6', 'claude-sonnet-4-6', 8192, 200000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":true,"jsonMode":true}', true, true),
+(11, 6, 'Claude Opus 4.7', 'claude-opus-4-7', 8192, 200000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":true,"jsonMode":true}', false, true);
 
 -- 验证安装
 SELECT 'pgvector version: ' || extversion AS info

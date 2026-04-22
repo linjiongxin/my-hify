@@ -3,16 +3,21 @@ package com.hify.model.provider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.model.api.dto.LlmStreamChunk;
+import com.hify.model.api.dto.LlmToolCall;
+import com.hify.model.api.dto.LlmUsage;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Response;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
  * OpenAI 兼容协议 SSE 事件监听器
+ *
+ * <p>支持增量文本、reasoning_content、tool_calls 增量解析</p>
  *
  * @author hify
  */
@@ -56,14 +61,26 @@ public class OpenAiSseEventListener extends EventSourceListener {
         if (choices.isEmpty()) {
             return LlmStreamChunk.builder().content("").build();
         }
-        JsonNode delta = choices.get(0).path("delta");
+
+        JsonNode firstChoice = choices.get(0);
+        JsonNode delta = firstChoice.path("delta");
         String content = delta.path("content").asText("");
-        String finishReason = choices.get(0).path("finish_reason").asText(null);
+        String reasoningContent = delta.path("reasoning_content").asText(null);
+        String finishReason = firstChoice.path("finish_reason").asText(null);
+
+        // tool_calls 增量解析
+        List<LlmToolCall> toolCalls = OpenAiCompatibleProvider.parseToolCalls(delta.path("tool_calls"));
+
+        // usage 可能在最后一条返回
+        LlmUsage usage = OpenAiCompatibleProvider.parseUsage(root.path("usage"));
 
         return LlmStreamChunk.builder()
                 .content(content)
-                .finishReason(finishReason)
+                .reasoningContent(reasoningContent)
+                .toolCalls(toolCalls)
+                .usage(usage)
                 .finish(finishReason != null)
+                .finishReason(finishReason)
                 .build();
     }
 }

@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * LLM 聊天请求
  *
- * @author hify
+ * <p>统一格式，各 Provider 实现负责转换为自身协议</p>
  */
 @Data
 @Builder
@@ -45,6 +45,21 @@ public class LlmChatRequest implements Serializable {
      * Top P
      */
     private Double topP;
+
+    /**
+     * 工具定义列表
+     */
+    private List<LlmToolDefinition> tools;
+
+    /**
+     * 工具选择模式: auto / none / required / {"type": "function", "function": {"name": "xxx"}}
+     */
+    private Object toolChoice;
+
+    /**
+     * 推理/思考深度控制（o-series: low/medium/high，DeepSeek: true/false）
+     */
+    private String reasoningEffort;
 
     /**
      * 扩展参数（如 providerCode、apiKey 覆盖等）

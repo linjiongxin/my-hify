@@ -82,7 +82,7 @@ async function fetchApi(params: PageParams): Promise<PageResult<Agent>> {
 
 function handleAdd() {
   toolList.value = []
-  dialogRef.value?.open({ enabled: true, temperature: 0.7, maxTokens: 2048, topP: 1.0 })
+  dialogRef.value?.open({ enabled: true, temperature: 0.7, maxTokens: 2048, topP: 1.0 }, false)
 }
 
 async function handleEdit(row: Agent) {
@@ -90,8 +90,8 @@ async function handleEdit(row: Agent) {
   const detail = await getAgentDetail(row.id)
   currentAgentId.value = row.id
   const tools = await getAgentTools(row.id)
-  toolList.value = tools
-  dialogRef.value?.open({ ...detail })
+  toolList.value = tools || []
+  dialogRef.value?.open({ ...detail, id: row.id })
 }
 
 async function handleDelete(row: Agent) {
@@ -105,7 +105,7 @@ async function handleDelete(row: Agent) {
   )
 }
 
-async function handleSubmit(data: Agent, isEdit: boolean) {
+async function handleSubmit(data: Agent, _isEdit: boolean) {
   const payload = {
     name: data.name,
     modelId: data.modelId,
@@ -117,7 +117,7 @@ async function handleSubmit(data: Agent, isEdit: boolean) {
     welcomeMessage: data.welcomeMessage,
     enabled: data.enabled,
   }
-  if (isEdit) {
+  if (data.id != null) {
     await updateAgent(data.id, payload)
     notifySuccess('修改成功')
   } else {

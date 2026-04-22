@@ -16,6 +16,7 @@ public final class ModelConstants {
      */
     public static final class ProtocolType {
         public static final String OPENAI_COMPATIBLE = "openai_compatible";
+        public static final String ANTHROPIC = "anthropic";
     }
 
     /**
@@ -34,6 +35,8 @@ public final class ModelConstants {
     public static final class HeaderName {
         public static final String AUTHORIZATION = "Authorization";
         public static final String API_KEY = "api-key";
+        public static final String ANTHROPIC_VERSION = "anthropic-version";
+        public static final String X_API_KEY = "x-api-key";
     }
 
     /**
@@ -47,6 +50,13 @@ public final class ModelConstants {
     }
 
     /**
+     * Anthropic 版本
+     */
+    public static final class AnthropicVersion {
+        public static final String V2023_06_01 = "2023-06-01";
+    }
+
+    /**
      * 健康状态
      */
     public static final class HealthStatus {
@@ -54,5 +64,14 @@ public final class ModelConstants {
         public static final String DEGRADED = "degraded";
         public static final String UNHEALTHY = "unhealthy";
         public static final String UNKNOWN = "unknown";
+    }
+
+    /**
+     * 工具选择模式
+     */
+    public static final class ToolChoice {
+        public static final String AUTO = "auto";
+        public static final String NONE = "none";
+        public static final String REQUIRED = "required";
     }
 }

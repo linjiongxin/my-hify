@@ -27,13 +27,21 @@ const formData = ref<T>({} as T)
 const submitLoading = ref(false)
 const rawData = ref<T | null>(null)
 
-const isEdit = computed(() => !!rawData.value)
+const forceEdit = ref<boolean | undefined>(undefined)
+
+const isEdit = computed(() => {
+  if (forceEdit.value !== undefined) {
+    return forceEdit.value
+  }
+  return !!rawData.value
+})
 const dialogTitle = computed(() => {
   const prefix = isEdit.value ? '编辑' : '新增'
   return `${prefix}${props.title}`
 })
 
-function open(data?: T) {
+function open(data?: T, editing?: boolean) {
+  forceEdit.value = editing
   rawData.value = data || null
   visible.value = true
   nextTick(() => {
@@ -54,6 +62,7 @@ function handleClosed() {
   submitLoading.value = false
   rawData.value = null
   formData.value = {} as T
+  forceEdit.value = undefined
 }
 
 async function handleSubmit() {
