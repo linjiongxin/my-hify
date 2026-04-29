@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.hify.rag.mapper.DocumentChunkMapper">
+
+    <!--
+        插入向量数据
+        embedding 字段需要 ::vector cast，因为 MyBatis-Plus 的 insert 会把 String 当作 varchar
+    -->
+    <insert id="insertVector">
+        INSERT INTO document_chunk (
+            kb_id, document_id, content, embedding,
+            chunk_index, meta_json, enabled
+        )
+        VALUES (
+            #{kbId}, #{documentId}, #{content},
+            #{embedding}::vector,
+            #{chunkIndex},
+            #{metaJson}::jsonb,
+            #{enabled}
+        )
+    </insert>
+
+    <!-- 批量插入向量 -->
+    <insert id="insertVectorBatch">
+        INSERT INTO document_chunk (
+            kb_id, document_id, content, embedding,
+            chunk_index, meta_json, enabled
+        )
+        VALUES
+        <foreach collection="chunks" item="c" separator=",">
+            (
+                #{c.kbId}, #{c.documentId}, #{c.content},
+                #{c.embedding}::vector,
+                #{c.chunkIndex},
+                #{c.metaJson}::jsonb,
+                #{c.enabled}
+            )
+        </foreach>
+    </insert>
+
+</mapper>
