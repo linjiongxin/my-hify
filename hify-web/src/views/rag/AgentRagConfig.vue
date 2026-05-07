@@ -17,7 +17,7 @@
                   :value="agent.id"
                 />
               </el-select>
-            </el-form>
+            </el-form-item>
           </el-form>
         </el-card>
 
