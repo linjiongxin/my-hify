@@ -17,7 +17,7 @@
         <result column="error_message" property="errorMessage" />
         <result column="created_at" property="createdAt" />
         <result column="updated_at" property="updatedAt" />
-        <result column="is_deleted" property="deleted" />
+        <result column="deleted" property="deleted" />
         <result column="created_by" property="createdBy" />
         <result column="updated_by" property="updatedBy" />
     </resultMap>

@@ -1,6 +1,5 @@
 package com.hify.rag.entity;
 
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.hify.common.web.entity.base.BaseEntity;
 import lombok.Data;
@@ -58,11 +57,4 @@ public class Document extends BaseEntity {
      * 错误信息
      */
     private String errorMessage;
-
-    /**
-     * 逻辑删除字段（映射到 is_deleted 列）
-     */
-    @TableField("is_deleted")
-    @com.baomidou.mybatisplus.annotation.TableLogic
-    private Boolean deleted;
 }

@@ -158,7 +158,12 @@
       "Bash(pkill -f \"spring-boot\")",
       "WebFetch(domain:www.minimaxi.com)",
       "Bash(openspec propose *)",
-      "Bash(openspec *)"
+      "Bash(openspec *)",
+      "Bash(git stash *)",
+      "Bash(brew list *)",
+      "Bash(pkill -9 -f \"hify-server\")",
+      "Bash(pkill -9 -f \"spring-boot:run\")",
+      "Bash(echo \"PID: $!\")"
     ]
   }
 }

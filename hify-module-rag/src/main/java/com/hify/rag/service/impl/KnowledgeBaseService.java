@@ -77,12 +77,7 @@ public class KnowledgeBaseService implements KnowledgeBaseApi {
 
     @Override
     public void delete(Long id) {
-        // 逻辑删除
-        KnowledgeBase kb = knowledgeBaseMapper.selectById(id);
-        if (kb != null) {
-            kb.setDeleted(true);
-            knowledgeBaseMapper.updateById(kb);
-        }
+        knowledgeBaseMapper.deleteById(id);
     }
 
     @Override
