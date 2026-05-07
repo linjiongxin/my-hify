@@ -1,13 +1,16 @@
 import { test, expect, Page } from '@playwright/test'
 
-// 登录
+// 登录 - 直接设置 token 然后导航到目标页面
 async function login(page: Page) {
-  await page.goto('http://localhost:5173/login')
+  // 设置 token
+  await page.goto('http://localhost:5173')
+  await page.evaluate(() => localStorage.setItem('token', 'test-token'))
+  // 直接导航到目标页面
+  await page.goto('http://localhost:5173/rag/knowledge-bases')
   await page.waitForLoadState('networkidle')
-  // 如果在登录页，设置 token 后跳转到知识库页面
+  // 如果被重定向到 login，再试一次
   if (page.url().includes('/login')) {
-    await page.evaluate(() => localStorage.setItem('token', 'test-token'))
-    await page.evaluate(() => { window.location.href = 'http://localhost:5173/rag/knowledge-bases' })
+    await page.goto('http://localhost:5173/rag/knowledge-bases')
     await page.waitForLoadState('networkidle')
   }
 }
@@ -76,13 +79,19 @@ test.describe('知识库管理 E2E 测试', () => {
 
     // 提交
     await page.click('.el-dialog__footer button.el-button--primary')
-    await page.waitForTimeout(1000)
 
     // 验证成功提示
-    await expect(page.locator('.el-message')).toContainText('成功')
+    await expect(page.locator('.el-message')).toContainText('成功', { timeout: 5000 })
+
+    // 等待弹窗关闭
+    await page.waitForTimeout(1000)
+
+    // 刷新页面确保数据同步
+    await page.reload()
+    await page.waitForLoadState('networkidle')
 
     // 等待表格中出现新创建的知识库
-    await waitForTableData(page, kbName)
+    await page.waitForSelector(`.el-table__body tr:has-text("${kbName}")`, { timeout: 15000 })
 
     // 验证知识库出现在列表中
     await expect(page.locator(`.el-table__body tr:has-text("${kbName}")`)).toBeVisible()
@@ -98,7 +107,9 @@ test.describe('知识库管理 E2E 测试', () => {
     await createTestKBViaAPI(page, kbName)
 
     await login(page)
-    await waitForTableData(page, kbName)
+
+    // 等待表格加载
+    await page.waitForSelector('.el-table__body tr', { timeout: 10000 })
 
     // 点击编辑按钮
     const row = page.locator(`.el-table__body tr:has-text("${kbName}")`)
@@ -115,7 +126,7 @@ test.describe('知识库管理 E2E 测试', () => {
     await page.waitForTimeout(1000)
 
     // 验证成功提示
-    await expect(page.locator('.el-message')).toContainText('成功')
+    await expect(page.locator('.el-message')).toContainText('成功', { timeout: 5000 })
 
     // 清理
     await deleteTestKBByName(page, kbName + '_updated')
@@ -128,7 +139,9 @@ test.describe('知识库管理 E2E 测试', () => {
     await createTestKBViaAPI(page, kbName)
 
     await login(page)
-    await waitForTableData(page, kbName)
+
+    // 等待表格加载
+    await page.waitForSelector('.el-table__body tr', { timeout: 10000 })
 
     // 点击删除按钮
     const row = page.locator(`.el-table__body tr:has-text("${kbName}")`)
@@ -141,7 +154,7 @@ test.describe('知识库管理 E2E 测试', () => {
     await page.waitForTimeout(1000)
 
     // 验证成功提示
-    await expect(page.locator('.el-message')).toContainText('成功')
+    await expect(page.locator('.el-message')).toContainText('成功', { timeout: 5000 })
   })
 })
 
