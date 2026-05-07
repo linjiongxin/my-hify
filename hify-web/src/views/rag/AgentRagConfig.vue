@@ -172,9 +172,9 @@ const availableKbs = computed(() => {
 
 const loadAgents = async () => {
   try {
-    const res = await fetch('/api/agent/agents?enabled=true')
-    const data = await res.json()
-    agentList.value = data.list || []
+    const res = await fetch('/api/agent?pageNum=1&pageSize=100')
+    const result = await res.json()
+    agentList.value = result.data?.records || []
   } catch (e) {
     ElMessage.error('加载 Agent 列表失败')
   }
@@ -184,7 +184,7 @@ const loadKnowledgeBases = async () => {
   try {
     const res = await fetch('/api/rag/knowledge-bases?enabled=true')
     const data = await res.json()
-    knowledgeBases.value = data.list || []
+    knowledgeBases.value = data.records || []
   } catch (e) {
     ElMessage.error('加载知识库列表失败')
   }

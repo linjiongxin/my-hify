@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { ChatDotRound, Setting, User, Collection, Share, OfficeBuilding, Fold, Expand, ArrowDown } from '@element-plus/icons-vue'
+import { ChatDotRound, Setting, User, Collection, Share, OfficeBuilding, Fold, Expand, ArrowDown, Link } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const isCollapsed = ref(false)
@@ -12,6 +12,7 @@ const menuItems = [
   { title: '模型管理', icon: Setting, path: '/models' },
   { title: 'Agent 管理', icon: User, path: '/agents' },
   { title: '知识库', icon: Collection, path: '/knowledge' },
+  { title: 'Agent 知识库', icon: Link, path: '/rag/agent-kb' },
   { title: '工作流', icon: Share, path: '/workflows' },
 ]
 
@@ -22,6 +23,7 @@ const breadcrumbMap: Record<string, string> = {
   providers: '模型提供商',
   agents: 'Agent 管理',
   knowledge: '知识库',
+  'rag-agent-kb': 'Agent 知识库',
   workflows: '工作流',
 }
 
