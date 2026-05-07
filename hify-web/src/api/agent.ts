@@ -118,16 +118,37 @@ export interface AgentKbBindRequest {
   similarityThreshold: number
 }
 
+const baseUrl = '/api'
+
+function getToken(): string {
+  return localStorage.getItem('token') || ''
+}
+
 export function getKnowledgeBaseOptions(): Promise<KnowledgeBaseOption[]> {
-  return get('/rag/knowledge-bases', { params: { enabled: true } }).then((res: any) => res.records || [])
+  return fetch(`${baseUrl}/rag/knowledge-bases?enabled=true`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+    .then((r) => r.json())
+    .then((res: any) => res.records || [])
 }
 
 export function getAgentKbBindings(agentId: number): Promise<AgentKbBinding[]> {
-  return get(`/rag/agent-kb/agent/${agentId}`)
+  return fetch(`${baseUrl}/rag/agent-kb/agent/${agentId}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  }).then((r) => r.json())
 }
 
 export function bindAgentKb(data: AgentKbBindRequest): Promise<void> {
-  return post('/rag/agent-kb/bind', data)
+  return fetch(`${baseUrl}/rag/agent-kb/bind`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify(data),
+  }).then((r) => {
+    if (!r.ok) return Promise.reject(new Error('绑定失败'))
+  })
 }
 
 export function updateAgentKbBinding(
@@ -136,13 +157,29 @@ export function updateAgentKbBinding(
   topK: number,
   similarityThreshold: number
 ): Promise<void> {
-  return put('/rag/agent-kb/update', null, {
-    params: { agentId, kbId, topK, similarityThreshold },
+  const params = new URLSearchParams({
+    agentId: String(agentId),
+    kbId: String(kbId),
+    topK: String(topK),
+    similarityThreshold: String(similarityThreshold),
+  })
+  return fetch(`${baseUrl}/rag/agent-kb/update?${params.toString()}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${getToken()}` },
+  }).then((r) => {
+    if (!r.ok) return Promise.reject(new Error('更新失败'))
   })
 }
 
 export function unbindAgentKb(agentId: number, kbId: number): Promise<void> {
-  return del('/rag/agent-kb/unbind', {
-    params: { agentId, kbId },
+  const params = new URLSearchParams({
+    agentId: String(agentId),
+    kbId: String(kbId),
+  })
+  return fetch(`${baseUrl}/rag/agent-kb/unbind?${params.toString()}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${getToken()}` },
+  }).then((r) => {
+    if (!r.ok) return Promise.reject(new Error('解绑失败'))
   })
 }
