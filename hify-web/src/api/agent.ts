@@ -93,3 +93,56 @@ export function replaceAgentTools(agentId: number, data: AgentToolBatchRequest):
 export function unbindAgentTool(agentId: number, toolId: number): Promise<void> {
   return del(`/agent/${agentId}/tools/${toolId}`)
 }
+
+// ==================== 知识库绑定 ====================
+
+export interface KnowledgeBaseOption {
+  id: number
+  name: string
+}
+
+export interface AgentKbBinding {
+  id: number
+  agentId: number
+  kbId: number
+  kbName?: string
+  topK: number
+  similarityThreshold: number
+  enabled: boolean
+}
+
+export interface AgentKbBindRequest {
+  agentId: number
+  kbId: number
+  topK: number
+  similarityThreshold: number
+}
+
+export function getKnowledgeBaseOptions(): Promise<KnowledgeBaseOption[]> {
+  return get('/rag/knowledge-bases', { params: { enabled: true } }).then((res: any) => res.records || [])
+}
+
+export function getAgentKbBindings(agentId: number): Promise<AgentKbBinding[]> {
+  return get(`/rag/agent-kb/agent/${agentId}`)
+}
+
+export function bindAgentKb(data: AgentKbBindRequest): Promise<void> {
+  return post('/rag/agent-kb/bind', data)
+}
+
+export function updateAgentKbBinding(
+  agentId: number,
+  kbId: number,
+  topK: number,
+  similarityThreshold: number
+): Promise<void> {
+  return put('/rag/agent-kb/update', null, {
+    params: { agentId, kbId, topK, similarityThreshold },
+  })
+}
+
+export function unbindAgentKb(agentId: number, kbId: number): Promise<void> {
+  return del('/rag/agent-kb/unbind', {
+    params: { agentId, kbId },
+  })
+}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Plus, EditPen, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import HifyTable from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
@@ -15,8 +16,15 @@ import {
   deleteAgent,
   getAgentTools,
   replaceAgentTools,
+  getKnowledgeBaseOptions,
+  getAgentKbBindings,
+  bindAgentKb,
+  updateAgentKbBinding,
+  unbindAgentKb,
   type Agent,
   type ToolItem,
+  type KnowledgeBaseOption,
+  type AgentKbBinding,
 } from '@/api/agent'
 import { getAllEnabledModels } from '@/api/model'
 
@@ -78,6 +86,96 @@ const toolForm = ref<Partial<ToolItem>>({
 })
 const toolFormRef = ref()
 
+// 知识库绑定相关
+const kbList = ref<AgentKbBinding[]>([])
+const kbOptions = ref<KnowledgeBaseOption[]>([])
+const kbDialogVisible = ref(false)
+const kbDialogEditMode = ref(false)
+const kbFormRef = ref()
+const kbForm = ref<Partial<AgentKbBinding>>({
+  kbId: undefined,
+  topK: 5,
+  similarityThreshold: 0.7,
+  enabled: true,
+})
+
+async function loadKbOptions() {
+  kbOptions.value = await getKnowledgeBaseOptions()
+}
+
+async function loadKbBindings(agentId: number) {
+  const bindings = await getAgentKbBindings(agentId)
+  // 补充知识库名称
+  kbList.value = bindings.map((b) => {
+    const kb = kbOptions.value.find((k) => k.id === b.kbId)
+    return { ...b, kbName: kb?.name || String(b.kbId) }
+  })
+}
+
+function handleOpenKbDialog() {
+  kbDialogEditMode.value = false
+  kbForm.value = {
+    kbId: undefined,
+    topK: 5,
+    similarityThreshold: 0.7,
+    enabled: true,
+  }
+  kbDialogVisible.value = true
+}
+
+function handleEditKb(row: AgentKbBinding) {
+  kbDialogEditMode.value = true
+  kbForm.value = {
+    kbId: row.kbId,
+    topK: row.topK,
+    similarityThreshold: row.similarityThreshold,
+    enabled: row.enabled,
+  }
+  kbDialogVisible.value = true
+}
+
+async function handleSaveKb() {
+  if (!kbFormRef.value) return
+  try {
+    await kbFormRef.value.validate()
+  } catch {
+    return
+  }
+
+  if (!currentAgentId.value) {
+    ElMessage.warning('请先保存 Agent 基本信息')
+    return
+  }
+
+  const agentId = currentAgentId.value
+  const kbId = kbForm.value.kbId!
+  const topK = kbForm.value.topK!
+  const similarityThreshold = kbForm.value.similarityThreshold!
+
+  if (kbDialogEditMode.value) {
+    await updateAgentKbBinding(agentId, kbId, topK, similarityThreshold)
+    ElMessage.success('更新成功')
+  } else {
+    await bindAgentKb({ agentId, kbId, topK, similarityThreshold })
+    ElMessage.success('绑定成功')
+  }
+
+  kbDialogVisible.value = false
+  await loadKbBindings(agentId)
+}
+
+async function handleUnbindKb(row: AgentKbBinding) {
+  try {
+    await ElMessageBox.confirm('确定解绑该知识库？', '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  if (!currentAgentId.value) return
+  await unbindAgentKb(currentAgentId.value, row.kbId)
+  ElMessage.success('解绑成功')
+  await loadKbBindings(currentAgentId.value)
+}
+
 async function fetchApi(params: PageParams): Promise<PageResult<Agent>> {
   return getAgentPage(params)
 }
@@ -89,10 +187,13 @@ function handleAdd() {
 
 async function handleEdit(row: Agent) {
   toolList.value = []
+  kbList.value = []
   const detail = await getAgentDetail(row.id)
   currentAgentId.value = row.id
   const tools = await getAgentTools(row.id)
   toolList.value = tools || []
+  await loadKbOptions()
+  await loadKbBindings(row.id)
   dialogRef.value?.open({ ...detail, id: row.id })
 }
 
@@ -289,6 +390,34 @@ async function handleSaveTools() {
               </div>
             </div>
           </el-tab-pane>
+
+          <el-tab-pane label="知识库">
+            <div class="tool-binding">
+              <div class="tool-header">
+                <span class="tool-title">已绑定知识库</span>
+                <el-button type="primary" size="small" @click="handleOpenKbDialog">添加知识库</el-button>
+              </div>
+
+              <el-table :data="kbList" empty-text="暂未绑定知识库" style="width: 100%">
+                <el-table-column prop="kbName" label="知识库" min-width="140" />
+                <el-table-column prop="topK" label="Top-K" width="80" align="center" />
+                <el-table-column prop="similarityThreshold" label="相似度阈值" width="100" align="center" />
+                <el-table-column label="状态" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
+                      {{ row.enabled ? '启用' : '禁用' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="120" align="center">
+                  <template #default="{ row }">
+                    <el-button text size="small" @click="handleEditKb(row)">编辑</el-button>
+                    <el-button type="danger" text size="small" @click="handleUnbindKb(row)">解绑</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-tab-pane>
         </el-tabs>
       </template>
     </HifyFormDialog>
@@ -323,6 +452,51 @@ async function handleSaveTools() {
       <template #footer>
         <el-button @click="toolDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleAddTool">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 添加/编辑知识库弹窗 -->
+    <el-dialog
+      v-model="kbDialogVisible"
+      :title="kbDialogEditMode ? '编辑知识库绑定' : '添加知识库绑定'"
+      width="480px"
+      align-center
+      destroy-on-close
+    >
+      <el-form ref="kbFormRef" :model="kbForm" label-width="100px">
+        <el-form-item
+          label="知识库"
+          prop="kbId"
+          :rules="{ required: true, message: '请选择知识库', trigger: 'change' }"
+        >
+          <el-select v-model="kbForm.kbId" placeholder="请选择知识库" style="width: 100%" :disabled="kbDialogEditMode">
+            <el-option
+              v-for="kb in kbOptions"
+              :key="kb.id"
+              :label="kb.name"
+              :value="kb.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="Top-K" prop="topK">
+          <el-input-number v-model="kbForm.topK" :min="1" :max="20" />
+        </el-form-item>
+
+        <el-form-item label="相似度阈值" prop="similarityThreshold">
+          <el-input-number
+            v-model="kbForm.similarityThreshold"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            :precision="2"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="kbDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveKb">保存</el-button>
       </template>
     </el-dialog>
   </div>
