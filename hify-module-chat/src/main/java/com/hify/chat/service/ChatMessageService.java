@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.agent.api.AgentApi;
 import com.hify.agent.api.dto.AgentDTO;
 import com.hify.chat.entity.ChatMessage;
+import com.hify.rag.api.AgentKnowledgeBaseApi;
+import com.hify.rag.api.RagSearchApi;
+import com.hify.rag.vo.AgentKnowledgeBaseVO;
+import com.hify.rag.vo.RagSearchResult;
 import com.hify.chat.entity.ChatSession;
 import com.hify.chat.mapper.ChatMessageMapper;
 import com.hify.chat.mapper.ChatSessionMapper;
@@ -44,6 +48,8 @@ public class ChatMessageService {
     private final ChatSessionService chatSessionService;
     private final LlmGatewayApi llmGatewayApi;
     private final AgentApi agentApi;
+    private final AgentKnowledgeBaseApi agentKnowledgeBaseApi;
+    private final RagSearchApi ragSearchApi;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -69,8 +75,8 @@ public class ChatMessageService {
         // 保存用户消息
         ChatMessage userMsg = saveUserMessage(sessionId, message);
 
-        // 构建 LLM 上下文（系统提示 + 历史消息滑动窗口 + Token 预算）
-        List<LlmMessage> context = buildLlmContext(sessionId, agent);
+        // 构建 LLM 上下文（系统提示 + RAG 检索上下文 + 历史消息滑动窗口 + Token 预算）
+        List<LlmMessage> context = buildLlmContext(sessionId, agent, message);
         context.add(LlmMessage.user(message));
 
         // 创建 assistant 占位消息
@@ -143,17 +149,18 @@ public class ChatMessageService {
     }
 
     /**
-     * 构建 LLM 上下文：系统提示 + 历史消息（Token 预算截断）
+     * 构建 LLM 上下文：系统提示 + RAG 检索上下文 + 历史消息（Token 预算截断）
      */
-    private List<LlmMessage> buildLlmContext(Long sessionId, AgentDTO agent) {
+    private List<LlmMessage> buildLlmContext(Long sessionId, AgentDTO agent, String userQuery) {
         List<ChatMessage> history = loadHistory(sessionId);
         List<LlmMessage> context = new ArrayList<>();
 
-        String systemPrompt = agent.getSystemPrompt();
+        // 1. 构建系统提示词（含 RAG 检索上下文）
+        String systemPrompt = buildSystemPromptWithRag(agent, userQuery);
         int systemTokens = estimateTokens(systemPrompt);
         int budget = DEFAULT_MAX_CONTEXT_TOKENS - systemTokens;
 
-        // 从最新消息倒序贪婪累加，直到预算耗尽
+        // 2. 从最新消息倒序贪婪累加，直到预算耗尽
         List<ChatMessage> included = new ArrayList<>();
         int used = 0;
         for (int i = history.size() - 1; i >= 0; i--) {
@@ -178,6 +185,60 @@ public class ChatMessageService {
             }
         }
         return context;
+    }
+
+    /**
+     * 构建带 RAG 检索上下文的系统提示词
+     */
+    private String buildSystemPromptWithRag(AgentDTO agent, String userQuery) {
+        String basePrompt = agent.getSystemPrompt();
+        if (basePrompt == null) {
+            basePrompt = "";
+        }
+
+        // 查询 Agent 绑定的知识库
+        List<AgentKnowledgeBaseVO> bindings = agentKnowledgeBaseApi.getByAgentId(agent.getId());
+        if (bindings == null || bindings.isEmpty()) {
+            return basePrompt;
+        }
+
+        // 在每个绑定的知识库中检索
+        StringBuilder ragContext = new StringBuilder();
+        int totalResults = 0;
+        for (AgentKnowledgeBaseVO binding : bindings) {
+            List<RagSearchResult> results = ragSearchApi.search(
+                    binding.getKbId(),
+                    userQuery,
+                    binding.getTopK() != null ? binding.getTopK() : 5,
+                    binding.getSimilarityThreshold() != null
+                            ? binding.getSimilarityThreshold().floatValue() : 0.7f
+            );
+            if (!results.isEmpty()) {
+                totalResults += results.size();
+                for (RagSearchResult result : results) {
+                    ragContext.append("- ").append(result.getContent()).append("\n");
+                }
+            }
+        }
+
+        if (totalResults == 0) {
+            log.debug("Agent {} RAG 检索未返回结果, query='{}'", agent.getId(), userQuery);
+            return basePrompt;
+        }
+
+        log.info("Agent {} RAG 检索返回 {} 条结果, query='{}'",
+                agent.getId(), totalResults, userQuery.substring(0, Math.min(50, userQuery.length())));
+
+        // 将 RAG 上下文注入系统提示词
+        String ragSection = """
+
+                【参考信息】
+                以下是可能与用户问题相关的参考信息，请优先根据这些信息回答。如果参考信息不足以回答问题，请基于你的知识回答，并明确说明。
+
+                %s
+                """.formatted(ragContext.toString().trim());
+
+        return basePrompt + ragSection;
     }
 
     private LlmMessage toLlmMessage(ChatMessage msg) {

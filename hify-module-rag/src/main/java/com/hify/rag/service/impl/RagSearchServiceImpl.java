@@ -5,6 +5,7 @@ import com.hify.rag.core.EmbeddingServiceFactory;
 import com.hify.rag.entity.KnowledgeBase;
 import com.hify.rag.mapper.DocumentChunkMapper;
 import com.hify.rag.mapper.KnowledgeBaseMapper;
+import com.hify.rag.api.RagSearchApi;
 import com.hify.rag.service.RagSearchService;
 import com.hify.rag.vo.ChunkSearchVO;
 import com.hify.rag.vo.RagSearchResult;
@@ -20,7 +21,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-public class RagSearchServiceImpl implements RagSearchService {
+public class RagSearchServiceImpl implements RagSearchService, RagSearchApi {
 
     @Autowired
     private DocumentChunkMapper documentChunkMapper;
