@@ -177,12 +177,16 @@ const loadData = async () => {
     const params = {
       page: pagination.page,
       pageSize: pagination.pageSize,
-      name: queryForm.name || undefined,
-      enabled: queryForm.enabled
     }
+    if (queryForm.name) params.name = queryForm.name
+    if (queryForm.enabled !== null && queryForm.enabled !== '') params.enabled = queryForm.enabled
     const res = await fetch(`/api/rag/knowledge-bases?${new URLSearchParams(params)}`)
     const data = await res.json()
-    tableData.value = data.list || []
+    if (!res.ok) {
+      ElMessage.error(data.message || '加载失败')
+      return
+    }
+    tableData.value = data.records || []
     pagination.total = data.total || 0
   } catch (e) {
     ElMessage.error('加载失败')
@@ -200,11 +204,16 @@ const resetQuery = () => {
 const handleCreate = async () => {
   try {
     await createFormRef.value.validate()
-    await fetch('/api/rag/knowledge-bases', {
+    const res = await fetch('/api/rag/knowledge-bases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(createForm)
     })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: '创建失败' }))
+      ElMessage.error(err.message || '创建失败')
+      return
+    }
     ElMessage.success('创建成功')
     showCreateDialog.value = false
     loadData()

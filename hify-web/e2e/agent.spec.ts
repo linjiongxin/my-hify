@@ -1,5 +1,19 @@
 import { test, expect, Page } from '@playwright/test'
 
+// 登录并导航到目标页面
+async function loginAndNavigate(page: Page, url: string) {
+  await page.goto(url)
+  await page.waitForLoadState('networkidle')
+  // 如果在登录页，设置 token 后重新导航
+  if (page.url().includes('/login')) {
+    await page.evaluate((targetUrl) => {
+      localStorage.setItem('token', 'test-token')
+      window.location.href = targetUrl
+    }, url)
+    await page.waitForLoadState('networkidle')
+  }
+}
+
 async function waitForMessage(page: Page) {
   await page.waitForTimeout(800)
 }
@@ -56,8 +70,7 @@ async function waitForTableData(page: Page, agentName: string): Promise<void> {
 
 test.describe('Agent 管理 E2E 测试', () => {
   test('1. 页面加载 - Agent 列表页正确渲染', async ({ page }) => {
-    await page.goto('http://localhost:5173/agents')
-    await page.waitForLoadState('networkidle')
+    await loginAndNavigate(page, 'http://localhost:5173/agents')
     await expect(page.locator('h1.page-title')).toHaveText('Agent 管理')
     await expect(page.locator('button:has-text("新增 Agent")')).toBeVisible()
     await expect(page.locator('.el-table')).toBeVisible()
@@ -65,8 +78,7 @@ test.describe('Agent 管理 E2E 测试', () => {
 
   test('2. 通过 API 创建 Agent - 然后在 UI 验证', async ({ page }) => {
     const agentName = `E2E_Test_${Date.now()}`
-    await page.goto('http://localhost:5173/agents')
-    await page.waitForLoadState('networkidle')
+    await loginAndNavigate(page, 'http://localhost:5173/agents')
 
     // 通过 API 创建
     await createTestAgentViaAPI(page, agentName)
@@ -98,8 +110,7 @@ test.describe('Agent 管理 E2E 测试', () => {
 
 test.describe('Agent 表单验证', () => {
   test('名称为空时显示验证错误', async ({ page }) => {
-    await page.goto('http://localhost:5173/agents')
-    await page.waitForLoadState('networkidle')
+    await loginAndNavigate(page, 'http://localhost:5173/agents')
 
     await page.click('button:has-text("新增 Agent")')
     await expect(page.locator('.el-dialog')).toBeVisible()

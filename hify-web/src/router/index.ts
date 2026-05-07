@@ -41,7 +41,25 @@ const router = createRouter({
     {
       path: '/knowledge',
       name: 'knowledge',
-      component: () => import('../views/PlaceholderView.vue'),
+      component: () => import('../views/rag/KnowledgeBaseList.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/rag/knowledge-bases',
+      name: 'rag-knowledge-bases',
+      component: () => import('../views/rag/KnowledgeBaseList.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/rag/kb/:kbId/documents',
+      name: 'rag-documents',
+      component: () => import('../views/rag/DocumentManage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/rag/agent-kb',
+      name: 'rag-agent-kb',
+      component: () => import('../views/rag/AgentRagConfig.vue'),
       meta: { requiresAuth: true },
     },
     {
