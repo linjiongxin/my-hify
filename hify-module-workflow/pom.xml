@@ -30,15 +30,10 @@
             <artifactId>hify-module-model</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>com.hify</groupId>
-            <artifactId>hify-module-agent</artifactId>
-        </dependency>
-
         <!-- MyBatis Plus -->
         <dependency>
             <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-boot-starter</artifactId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
         </dependency>
 
         <!-- PostgreSQL -->

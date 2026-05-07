@@ -1,14 +1,15 @@
 package com.hify.workflow.engine.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmChatResponse;
 import com.hify.model.api.dto.LlmMessage;
-import com.hify.workflow.engine.ExecutionContext;
+import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.engine.NodeExecutor;
 import com.hify.workflow.engine.NodeResult;
 import com.hify.workflow.entity.WorkflowNode;
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.regex.Pattern;
 public class LLMNodeExecutor implements NodeExecutor {
 
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final LlmGatewayApi llmGatewayApi;
 
@@ -34,11 +36,10 @@ public class LLMNodeExecutor implements NodeExecutor {
     public NodeResult execute(WorkflowNode node, ExecutionContext context) {
         try {
             // 解析配置
-            JSONObject config = JSONObject.parseObject(node.getConfig());
-            String model = config.getString("model");
-            String prompt = config.getString("prompt");
-            List<String> inputVars = config.getJSONArray("inputVars");
-            String outputVar = config.getString("outputVar");
+            JsonNode config = objectMapper.readTree(node.getConfig());
+            String model = config.get("model").asText();
+            String prompt = config.get("prompt").asText();
+            String outputVar = config.has("outputVar") ? config.get("outputVar").asText() : null;
 
             if (model == null || prompt == null) {
                 return NodeResult.failure("LLM node config missing model or prompt");

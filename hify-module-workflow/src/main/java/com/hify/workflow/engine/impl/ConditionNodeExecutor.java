@@ -1,10 +1,11 @@
 package com.hify.workflow.engine.impl;
 
-import com.hify.workflow.engine.ExecutionContext;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.engine.NodeExecutor;
 import com.hify.workflow.engine.NodeResult;
 import com.hify.workflow.entity.WorkflowNode;
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
 
 import javax.script.ScriptEngine;
@@ -21,6 +22,7 @@ import java.util.regex.Pattern;
 public class ConditionNodeExecutor implements NodeExecutor {
 
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final ScriptEngineManager scriptEngineManager;
 
@@ -32,10 +34,10 @@ public class ConditionNodeExecutor implements NodeExecutor {
     public NodeResult execute(WorkflowNode node, ExecutionContext context) {
         try {
             // 解析配置
-            JSONObject config = JSONObject.parseObject(node.getConfig());
-            String expression = config.getString("expression");
-            String trueBranch = config.getString("trueBranch");
-            String falseBranch = config.getString("falseBranch");
+            JsonNode config = objectMapper.readTree(node.getConfig());
+            String expression = config.has("expression") ? config.get("expression").asText() : null;
+            String trueBranch = config.has("trueBranch") ? config.get("trueBranch").asText() : null;
+            String falseBranch = config.has("falseBranch") ? config.get("falseBranch").asText() : null;
 
             if (expression == null) {
                 return NodeResult.failure("Condition node config missing expression");

@@ -1,12 +1,13 @@
 package com.hify.workflow.engine.impl;
 
-import com.hify.workflow.engine.ExecutionContext;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.engine.NodeExecutor;
 import com.hify.workflow.engine.NodeResult;
 import com.hify.workflow.entity.WorkflowApproval;
 import com.hify.workflow.entity.WorkflowNode;
 import com.hify.workflow.mapper.WorkflowApprovalMapper;
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
 
 import java.util.regex.Matcher;
@@ -20,6 +21,7 @@ import java.util.regex.Pattern;
 public class ApprovalNodeExecutor implements NodeExecutor {
 
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public static final String STATUS_PENDING = "pending";
     public static final String STATUS_APPROVED = "approved";
@@ -35,9 +37,8 @@ public class ApprovalNodeExecutor implements NodeExecutor {
     public NodeResult execute(WorkflowNode node, ExecutionContext context) {
         try {
             // 解析配置
-            JSONObject config = JSONObject.parseObject(node.getConfig());
-            String prompt = config.getString("prompt");
-            String variables = config.getString("variables");
+            JsonNode config = objectMapper.readTree(node.getConfig());
+            String prompt = config.has("prompt") ? config.get("prompt").asText() : null;
 
             // 替换 prompt 中的占位符
             String resolvedPrompt = replacePlaceholders(prompt, context);

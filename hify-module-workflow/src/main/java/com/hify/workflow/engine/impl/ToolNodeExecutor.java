@@ -1,12 +1,15 @@
 package com.hify.workflow.engine.impl;
 
-import com.hify.workflow.engine.ExecutionContext;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.engine.NodeExecutor;
 import com.hify.workflow.engine.NodeResult;
 import com.hify.workflow.entity.WorkflowNode;
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
 
+import java.util.Iterator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,25 +21,23 @@ import java.util.regex.Pattern;
 public class ToolNodeExecutor implements NodeExecutor {
 
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
-
-    // TODO: 等待 MCP 模块实现后注入 McpToolExecutor
-    // private final McpToolExecutor mcpToolExecutor;
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public NodeResult execute(WorkflowNode node, ExecutionContext context) {
         try {
             // 解析配置
-            JSONObject config = JSONObject.parseObject(node.getConfig());
-            String toolName = config.getString("toolName");
-            JSONObject params = config.getJSONObject("params");
-            String outputVar = config.getString("outputVar");
+            JsonNode config = objectMapper.readTree(node.getConfig());
+            String toolName = config.has("toolName") ? config.get("toolName").asText() : null;
+            JsonNode paramsNode = config.has("params") ? config.get("params") : null;
+            String outputVar = config.has("outputVar") ? config.get("outputVar").asText() : null;
 
             if (toolName == null || toolName.isEmpty()) {
                 return NodeResult.failure("Tool node config missing toolName");
             }
 
             // 替换参数中的占位符
-            JSONObject resolvedParams = replaceParamsPlaceholders(params, context);
+            ObjectNode resolvedParams = replaceParamsPlaceholders(paramsNode, context);
 
             // 调用 MCP 工具
             Object result = executeTool(toolName, resolvedParams);
@@ -56,18 +57,20 @@ public class ToolNodeExecutor implements NodeExecutor {
     /**
      * 替换参数中的占位符
      */
-    private JSONObject replaceParamsPlaceholders(JSONObject params, ExecutionContext context) {
-        if (params == null) {
-            return new JSONObject();
+    private ObjectNode replaceParamsPlaceholders(JsonNode params, ExecutionContext context) {
+        ObjectNode resolved = objectMapper.createObjectNode();
+        if (params == null || !params.isObject()) {
+            return resolved;
         }
 
-        JSONObject resolved = new JSONObject();
-        for (String key : params.keySet()) {
-            Object value = params.get(key);
-            if (value instanceof String) {
-                resolved.put(key, replacePlaceholders((String) value, context));
+        Iterator<String> fieldNames = params.fieldNames();
+        while (fieldNames.hasNext()) {
+            String key = fieldNames.next();
+            JsonNode value = params.get(key);
+            if (value.isTextual()) {
+                resolved.put(key, replacePlaceholders(value.asText(), context));
             } else {
-                resolved.put(key, value);
+                resolved.set(key, value);
             }
         }
         return resolved;
@@ -98,9 +101,8 @@ public class ToolNodeExecutor implements NodeExecutor {
      * 执行工具
      * <p>TODO: MCP 模块实现后替换为真实调用</p>
      */
-    private Object executeTool(String toolName, JSONObject params) {
+    private Object executeTool(String toolName, ObjectNode params) {
         // TODO: 等待 MCP 模块实现后替换为真实调用
-        // return mcpToolExecutor.execute(toolName, params);
         throw new UnsupportedOperationException("MCP Tool Executor not yet implemented");
     }
 }

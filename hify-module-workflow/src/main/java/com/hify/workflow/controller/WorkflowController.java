@@ -8,7 +8,6 @@ import com.hify.workflow.api.dto.WorkflowCreateRequest;
 import com.hify.workflow.api.dto.WorkflowDTO;
 import com.hify.workflow.api.dto.WorkflowEdgeDTO;
 import com.hify.workflow.api.dto.WorkflowNodeDTO;
-import com.hify.workflow.api.dto.WorkflowQueryDTO;
 import com.hify.workflow.api.dto.WorkflowUpdateRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +34,7 @@ public class WorkflowController {
     }
 
     @GetMapping
-    public PageResult<WorkflowDTO> list(@ModelAttribute WorkflowQueryDTO query) {
+    public PageResult<WorkflowDTO> list(@ModelAttribute WorkflowApi.WorkflowQueryDTO query) {
         return workflowApi.list(query);
     }
 
