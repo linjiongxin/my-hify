@@ -94,8 +94,8 @@ const kbDialogEditMode = ref(false)
 const kbFormRef = ref()
 const kbForm = ref<Partial<AgentKbBinding>>({
   kbId: undefined,
-  topK: 5,
-  similarityThreshold: 0.7,
+  topK: 10,
+  similarityThreshold: 0.5,
   enabled: true,
 })
 
@@ -116,8 +116,8 @@ function handleOpenKbDialog() {
   kbDialogEditMode.value = false
   kbForm.value = {
     kbId: undefined,
-    topK: 5,
-    similarityThreshold: 0.7,
+    topK: 10,
+    similarityThreshold: 0.5,
     enabled: true,
   }
   kbDialogVisible.value = true

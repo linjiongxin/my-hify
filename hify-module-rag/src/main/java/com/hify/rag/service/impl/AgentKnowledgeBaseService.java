@@ -43,9 +43,9 @@ public class AgentKnowledgeBaseService implements AgentKnowledgeBaseApi {
         AgentKnowledgeBase binding = new AgentKnowledgeBase();
         binding.setAgentId(dto.getAgentId());
         binding.setKbId(dto.getKbId());
-        binding.setTopK(dto.getTopK() != null ? dto.getTopK() : 5);
+        binding.setTopK(dto.getTopK() != null ? dto.getTopK() : 10);
         binding.setSimilarityThreshold(dto.getSimilarityThreshold() != null
-                ? dto.getSimilarityThreshold() : new java.math.BigDecimal("0.7"));
+                ? dto.getSimilarityThreshold() : new java.math.BigDecimal("0.5"));
         binding.setEnabled(true);
         agentKnowledgeBaseMapper.insert(binding);
 

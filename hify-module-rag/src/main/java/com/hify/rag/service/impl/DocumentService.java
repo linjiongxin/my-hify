@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -149,8 +150,16 @@ public class DocumentService implements DocumentApi {
     }
 
     @Override
+    @Transactional
     public void delete(Long id) {
+        // 级联删除文档分块（物理删除，避免残留 chunk 污染向量检索）
+        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DocumentChunk> chunkWrapper =
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<>();
+        chunkWrapper.eq(DocumentChunk::getDocumentId, id);
+        documentChunkMapper.delete(chunkWrapper);
+
         documentMapper.deleteById(id);
+        log.info("Document {} deleted with chunks", id);
     }
 
     @Override
@@ -229,20 +238,24 @@ public class DocumentService implements DocumentApi {
             List<String> chunks = recursiveChunker.chunk(content);
             log.info("Document {} split into {} chunks", documentId, chunks.size());
 
-            // 5. 向量化 + 存储
-            for (int i = 0; i < chunks.size(); i++) {
-                String chunkContent = chunks.get(i);
-                float[] embedding = embeddingService.embed(chunkContent);
+            // 5. 批量向量化
+            List<float[]> embeddings = embeddingService.batchEmbed(chunks);
 
+            // 6. 构建 chunk 实体列表
+            List<DocumentChunk> chunkEntities = new ArrayList<>();
+            for (int i = 0; i < chunks.size(); i++) {
                 DocumentChunk chunk = new DocumentChunk();
                 chunk.setKbId(doc.getKbId());
                 chunk.setDocumentId(doc.getId());
-                chunk.setContent(chunkContent);
-                chunk.setEmbedding(vectorToString(embedding));
+                chunk.setContent(chunks.get(i));
+                chunk.setEmbedding(vectorToString(embeddings.get(i)));
                 chunk.setChunkIndex(i);
                 chunk.setEnabled(true);
-                documentChunkMapper.insert(chunk);
+                chunkEntities.add(chunk);
             }
+
+            // 7. 批量插入（使用 XML mapper 中的 ::vector cast）
+            documentChunkMapper.insertVectorBatch(chunkEntities);
 
             // 6. 更新文档状态
             doc.setStatus("completed");

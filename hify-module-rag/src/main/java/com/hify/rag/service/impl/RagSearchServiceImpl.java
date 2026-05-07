@@ -51,23 +51,33 @@ public class RagSearchServiceImpl implements RagSearchService, RagSearchApi {
             String embeddingStr = vectorToString(queryEmbedding);
 
             // 3. 向量检索（使用 pgvector 的 <=> 运算符）
-            // 注：阈值过滤在应用层处理，因为 pgvector 的距离运算符需要特殊处理
+            // 多取候选，确保长内容有机会进入结果池
             List<ChunkSearchVO> chunks = documentChunkMapper.searchSimilarInKb(
-                    embeddingStr, kbId, topK * 2); // 多取一些，后面过滤
+                    embeddingStr, kbId, topK * 20);
 
-            // 4. 过滤相似度阈值
+            // 4. 过滤 + 去重
+            // 注：不过滤短内容，因为标题 chunk 虽短但语义匹配度高，
+            // 且 nomic-embed-text 对中文长文本的区分度不足，长内容可能排名靠后
             List<RagSearchResult> results = chunks.stream()
                     .filter(chunk -> chunk.getSimilarity() >= threshold)
-                    .limit(topK)
+                    .filter(chunk -> chunk.getContent() != null && !chunk.getContent().trim().isEmpty())
                     .map(chunk -> {
                         RagSearchResult result = new RagSearchResult();
                         result.setChunkId(chunk.getId());
-                        result.setContent(chunk.getContent());
+                        result.setContent(chunk.getContent().trim());
                         result.setSimilarity(chunk.getSimilarity());
                         result.setMetaJson(chunk.getMetaJson());
                         return result;
                     })
-                    .collect(Collectors.toList());
+                    // 按内容去重（避免重复文档/重复 chunk 占满结果）
+                    .collect(Collectors.collectingAndThen(
+                            Collectors.toMap(RagSearchResult::getContent, r -> r,
+                                    (a, b) -> a.getSimilarity() > b.getSimilarity() ? a : b),
+                            map -> map.values().stream()
+                                    .sorted((a, b) -> Float.compare(b.getSimilarity(), a.getSimilarity()))
+                                    .limit(topK)
+                                    .collect(Collectors.toList())
+                    ));
 
             log.debug("RAG search for kbId={}, query='{}', found {} results",
                     kbId, query.substring(0, Math.min(50, query.length())), results.size());

@@ -27,6 +27,9 @@ public class OpenAiSseEventListener extends EventSourceListener {
     private final Consumer<LlmStreamChunk> callback;
     private final ObjectMapper objectMapper;
 
+    // 处理模型在 content 中输出 <think> 标签的情况
+    private boolean inThinkTag = false;
+
     public OpenAiSseEventListener(Consumer<LlmStreamChunk> callback, ObjectMapper objectMapper) {
         this.callback = callback;
         this.objectMapper = objectMapper;
@@ -40,6 +43,9 @@ public class OpenAiSseEventListener extends EventSourceListener {
         }
         try {
             LlmStreamChunk chunk = parseStreamChunk(data);
+            // 过滤 <think> 标签内容，避免思考过程暴露给用户
+            String filtered = filterThinkContent(chunk.getContent());
+            chunk.setContent(filtered);
             callback.accept(chunk);
             if (Boolean.TRUE.equals(chunk.getFinish())) {
                 eventSource.cancel();
@@ -47,6 +53,39 @@ public class OpenAiSseEventListener extends EventSourceListener {
         } catch (Exception e) {
             log.warn("解析 SSE 流数据失败: {}", data, e);
         }
+    }
+
+    /**
+     * 过滤 <think>...</think> 包裹的思考过程内容
+     * 支持跨 chunk 的 <think> 标签
+     */
+    private String filterThinkContent(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        StringBuilder result = new StringBuilder();
+        int i = 0;
+        while (i < text.length()) {
+            if (!inThinkTag) {
+                int thinkStart = text.indexOf("<think>", i);
+                if (thinkStart == -1) {
+                    result.append(text.substring(i));
+                    break;
+                }
+                result.append(text.substring(i, thinkStart));
+                i = thinkStart + 7; // len("<think>") = 7
+                inThinkTag = true;
+            } else {
+                int thinkEnd = text.indexOf("</think>", i);
+                if (thinkEnd == -1) {
+                    // <think> 未闭合，忽略剩余内容直到下一条
+                    break;
+                }
+                i = thinkEnd + 8; // len("</think>") = 8
+                inThinkTag = false;
+            }
+        }
+        return result.toString();
     }
 
     @Override

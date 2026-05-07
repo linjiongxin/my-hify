@@ -44,15 +44,35 @@ public class RecursiveChunker {
         // 按空行分段（段落分割）
         String[] paragraphs = text.split("\n\\s*\n");
 
+        StringBuilder pending = new StringBuilder();
         for (String paragraph : paragraphs) {
             if (paragraph.trim().isEmpty()) continue;
 
-            int tokens = estimateTokens(paragraph);
-            if (tokens <= maxTokens) {
-                result.add(paragraph.trim());
-            } else {
-                result.addAll(splitLongParagraph(paragraph));
+            String trimmed = paragraph.trim();
+
+            // 短段落（如标题）先缓存，和下一个段落合并，避免标题单独成块
+            if (trimmed.length() <= 30 && pending.length() == 0) {
+                pending.append(trimmed);
+                continue;
             }
+
+            // 如果有缓存的短段落，合并到当前段落
+            if (pending.length() > 0) {
+                trimmed = pending.toString() + "\n\n" + trimmed;
+                pending.setLength(0);
+            }
+
+            int tokens = estimateTokens(trimmed);
+            if (tokens <= maxTokens) {
+                result.add(trimmed);
+            } else {
+                result.addAll(splitLongParagraph(trimmed));
+            }
+        }
+
+        // 处理末尾剩余的短段落
+        if (pending.length() > 0) {
+            result.add(pending.toString());
         }
 
         return result;

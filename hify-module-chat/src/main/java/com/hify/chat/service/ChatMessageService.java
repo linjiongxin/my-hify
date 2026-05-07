@@ -75,9 +75,31 @@ public class ChatMessageService {
         // 保存用户消息
         ChatMessage userMsg = saveUserMessage(sessionId, message);
 
-        // 构建 LLM 上下文（系统提示 + RAG 检索上下文 + 历史消息滑动窗口 + Token 预算）
-        List<LlmMessage> context = buildLlmContext(sessionId, agent, message);
-        context.add(LlmMessage.user(message));
+        // 构建 RAG 检索上下文
+        String ragContext = buildRagContext(agent, message);
+
+        // 构建 LLM 上下文（系统提示 + 历史消息滑动窗口 + Token 预算）
+        List<LlmMessage> context = buildLlmContext(sessionId, agent, message, ragContext);
+
+        // 将 RAG 上下文注入最后一条用户消息（模型对 user message 中的指令遵循度更高）
+        String finalUserMessage;
+        if (ragContext != null && !ragContext.isBlank()) {
+            finalUserMessage = """
+                    请严格根据以下参考信息回答问题。要求：
+                    1. 优先使用参考信息中的原文内容，尽量完整呈现，不要概括或简化
+                    2. 如果参考信息足够回答问题，不要添加你自己的知识
+                    3. 如果参考信息不足，明确告知用户"根据现有资料，暂时无法找到完整答案"
+
+                    <参考信息>
+                    %s
+                    </参考信息>
+
+                    用户问题：%s
+                    """.formatted(ragContext, message);
+        } else {
+            finalUserMessage = message;
+        }
+        context.add(LlmMessage.user(finalUserMessage));
 
         // 创建 assistant 占位消息
         ChatMessage assistantMsg = createAssistantPlaceholder(sessionId, userMsg.getSeq() + 1, agent.getModelId());
@@ -149,18 +171,21 @@ public class ChatMessageService {
     }
 
     /**
-     * 构建 LLM 上下文：系统提示 + RAG 检索上下文 + 历史消息（Token 预算截断）
+     * 构建 LLM 上下文：系统提示 + 历史消息（Token 预算截断）+ 带 RAG 的用户消息
      */
-    private List<LlmMessage> buildLlmContext(Long sessionId, AgentDTO agent, String userQuery) {
+    private List<LlmMessage> buildLlmContext(Long sessionId, AgentDTO agent, String userQuery, String ragContext) {
         List<ChatMessage> history = loadHistory(sessionId);
         List<LlmMessage> context = new ArrayList<>();
 
-        // 1. 构建系统提示词（含 RAG 检索上下文）
-        String systemPrompt = buildSystemPromptWithRag(agent, userQuery);
-        int systemTokens = estimateTokens(systemPrompt);
-        int budget = DEFAULT_MAX_CONTEXT_TOKENS - systemTokens;
+        String basePrompt = agent.getSystemPrompt();
+        int basePromptTokens = estimateTokens(basePrompt);
+        int ragTokens = estimateTokens(ragContext);
+        int userQueryTokens = estimateTokens(userQuery);
+        int overheadTokens = estimateTokens("参考以下信息回答问题：\n\n<参考信息>\n</参考信息>\n\n用户问题：");
+        int fixedTokens = basePromptTokens + ragTokens + userQueryTokens + overheadTokens;
+        int budget = DEFAULT_MAX_CONTEXT_TOKENS - fixedTokens;
 
-        // 2. 从最新消息倒序贪婪累加，直到预算耗尽
+        // 从最新消息倒序贪婪累加，直到预算耗尽
         List<ChatMessage> included = new ArrayList<>();
         int used = 0;
         for (int i = history.size() - 1; i >= 0; i--) {
@@ -168,7 +193,7 @@ public class ChatMessageService {
             int tokens = estimateTokens(msg.getContent());
             if (used + tokens > budget) {
                 log.debug("Token 预算截断: 已用 {}/{}, 舍弃 seq={} 及更早消息",
-                        used + systemTokens, DEFAULT_MAX_CONTEXT_TOKENS, msg.getSeq());
+                        used + fixedTokens, DEFAULT_MAX_CONTEXT_TOKENS, msg.getSeq());
                 break;
             }
             used += tokens;
@@ -176,8 +201,8 @@ public class ChatMessageService {
         }
         Collections.reverse(included); // 恢复正序
 
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
-            context.add(LlmMessage.system(systemPrompt));
+        if (basePrompt != null && !basePrompt.isBlank()) {
+            context.add(LlmMessage.system(basePrompt));
         }
         for (ChatMessage msg : included) {
             if ("user".equals(msg.getRole()) || "assistant".equals(msg.getRole())) {
@@ -188,18 +213,13 @@ public class ChatMessageService {
     }
 
     /**
-     * 构建带 RAG 检索上下文的系统提示词
+     * 构建 RAG 检索上下文（仅返回检索到的内容，不含 basePrompt）
      */
-    private String buildSystemPromptWithRag(AgentDTO agent, String userQuery) {
-        String basePrompt = agent.getSystemPrompt();
-        if (basePrompt == null) {
-            basePrompt = "";
-        }
-
+    private String buildRagContext(AgentDTO agent, String userQuery) {
         // 查询 Agent 绑定的知识库
         List<AgentKnowledgeBaseVO> bindings = agentKnowledgeBaseApi.getByAgentId(agent.getId());
         if (bindings == null || bindings.isEmpty()) {
-            return basePrompt;
+            return null;
         }
 
         // 在每个绑定的知识库中检索
@@ -209,36 +229,30 @@ public class ChatMessageService {
             List<RagSearchResult> results = ragSearchApi.search(
                     binding.getKbId(),
                     userQuery,
-                    binding.getTopK() != null ? binding.getTopK() : 5,
+                    binding.getTopK() != null ? binding.getTopK() : 10,
                     binding.getSimilarityThreshold() != null
-                            ? binding.getSimilarityThreshold().floatValue() : 0.7f
+                            ? binding.getSimilarityThreshold().floatValue() : 0.5f
             );
             if (!results.isEmpty()) {
                 totalResults += results.size();
-                for (RagSearchResult result : results) {
-                    ragContext.append("- ").append(result.getContent()).append("\n");
+                for (int i = 0; i < results.size(); i++) {
+                    RagSearchResult result = results.get(i);
+                    ragContext.append("[").append(i + 1).append("] ")
+                            .append(result.getContent().replace("\n", " "))
+                            .append("\n");
                 }
             }
         }
 
         if (totalResults == 0) {
             log.debug("Agent {} RAG 检索未返回结果, query='{}'", agent.getId(), userQuery);
-            return basePrompt;
+            return null;
         }
 
         log.info("Agent {} RAG 检索返回 {} 条结果, query='{}'",
                 agent.getId(), totalResults, userQuery.substring(0, Math.min(50, userQuery.length())));
 
-        // 将 RAG 上下文注入系统提示词
-        String ragSection = """
-
-                【参考信息】
-                以下是可能与用户问题相关的参考信息，请优先根据这些信息回答。如果参考信息不足以回答问题，请基于你的知识回答，并明确说明。
-
-                %s
-                """.formatted(ragContext.toString().trim());
-
-        return basePrompt + ragSection;
+        return ragContext.toString().trim();
     }
 
     private LlmMessage toLlmMessage(ChatMessage msg) {
