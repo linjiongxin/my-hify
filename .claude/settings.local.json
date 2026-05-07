@@ -155,7 +155,10 @@
       "Bash(pkill -f \"spring-boot:run\")",
       "Bash(npm list *)",
       "Bash(nohup mvn *)",
-      "Bash(pkill -f \"spring-boot\")"
+      "Bash(pkill -f \"spring-boot\")",
+      "WebFetch(domain:www.minimaxi.com)",
+      "Bash(openspec propose *)",
+      "Bash(openspec *)"
     ]
   }
 }

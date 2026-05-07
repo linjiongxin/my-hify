@@ -168,6 +168,31 @@ CREATE TRIGGER update_agent_tool_updated_at
 
 CREATE INDEX idx_agent_tool_agent_id ON agent_tool(agent_id);
 
+-- Agent × 知识库绑定表
+CREATE TABLE IF NOT EXISTS agent_knowledge_base (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id BIGINT NOT NULL,
+    kb_id BIGINT NOT NULL,
+    top_k INT NOT NULL DEFAULT 5,
+    similarity_threshold DECIMAL(3,2) NOT NULL DEFAULT 0.7,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT,
+
+    CONSTRAINT fk_akb_agent FOREIGN KEY (agent_id) REFERENCES agent(id),
+    CONSTRAINT fk_akb_kb FOREIGN KEY (kb_id) REFERENCES knowledge_base(id),
+    CONSTRAINT uk_akb_agent_kb UNIQUE (agent_id, kb_id)
+);
+
+CREATE TRIGGER update_agent_knowledge_base_updated_at
+    BEFORE UPDATE ON agent_knowledge_base
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_agent_knowledge_base_agent_id ON agent_knowledge_base(agent_id);
+CREATE INDEX idx_agent_knowledge_base_kb_id ON agent_knowledge_base(kb_id);
+
 -- ========================================
 -- MCP 绑定模块
 -- ========================================
@@ -244,20 +269,20 @@ CREATE INDEX idx_chat_message_created_at ON chat_message(created_at);
 CREATE INDEX gin_chat_message_metadata ON chat_message USING GIN (metadata);
 
 -- ========================================
--- RAG 模块（前缀: rag_）
+-- RAG 模块（知识库 + 文档分块）
 -- ========================================
 
 CREATE TABLE IF NOT EXISTS knowledge_base (
-    id BIGINT PRIMARY KEY,
-    name VARCHAR(64) NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
     description TEXT,
-    embedding_model VARCHAR(64),
-    chunk_size INT DEFAULT 500,
-    chunk_overlap INT DEFAULT 50,
-    enabled BOOLEAN DEFAULT TRUE,
+    embedding_model VARCHAR(64) NOT NULL DEFAULT 'text-embedding-v2',
+    chunk_size INT NOT NULL DEFAULT 512,
+    chunk_overlap INT NOT NULL DEFAULT 50,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     created_by BIGINT,
     updated_by BIGINT
 );
@@ -266,48 +291,54 @@ CREATE TRIGGER update_knowledge_base_updated_at
     BEFORE UPDATE ON knowledge_base
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE INDEX idx_knowledge_base_enabled ON knowledge_base(enabled);
+CREATE UNIQUE INDEX uk_knowledge_base_name ON knowledge_base(name);
+CREATE INDEX idx_knowledge_base_created_by ON knowledge_base(created_by);
 
-CREATE TABLE IF NOT EXISTS knowledge_document (
-    id BIGINT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS document (
+    id BIGSERIAL PRIMARY KEY,
     kb_id BIGINT NOT NULL,
     file_name VARCHAR(256) NOT NULL,
+    file_type VARCHAR(32) NOT NULL,
+    file_size BIGINT NOT NULL DEFAULT 0,
     file_path VARCHAR(512),
-    file_size BIGINT,
-    file_type VARCHAR(32),
-    content TEXT,
-    status VARCHAR(16) DEFAULT 'pending',
-    error_msg TEXT,
-    chunk_count INT DEFAULT 0,
-    enabled BOOLEAN DEFAULT TRUE,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    parsed_content TEXT,
+    total_chunks INT NOT NULL DEFAULT 0,
+    error_message TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     created_by BIGINT,
-    updated_by BIGINT
+    updated_by BIGINT,
+
+    CONSTRAINT fk_document_kb FOREIGN KEY (kb_id) REFERENCES knowledge_base(id),
+    CONSTRAINT chk_document_status CHECK (status IN ('pending', 'processing', 'completed', 'failed'))
 );
 
-CREATE TRIGGER update_knowledge_document_updated_at
-    BEFORE UPDATE ON knowledge_document
+CREATE TRIGGER update_document_updated_at
+    BEFORE UPDATE ON document
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE INDEX idx_knowledge_document_kb_id ON knowledge_document(kb_id);
-CREATE INDEX idx_knowledge_document_status ON knowledge_document(status);
+CREATE INDEX idx_document_kb_id ON document(kb_id);
+CREATE INDEX idx_document_status ON document(status);
+CREATE INDEX idx_document_created_by ON document(created_by);
 
 CREATE TABLE IF NOT EXISTS document_chunk (
-    id BIGINT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     kb_id BIGINT NOT NULL,
     document_id BIGINT NOT NULL,
     content TEXT NOT NULL,
-    embedding VECTOR(1536),
-    chunk_index INT DEFAULT 0,
+    embedding VECTOR(1024),
+    chunk_index INT NOT NULL DEFAULT 0,
     meta_json JSONB,
-    enabled BOOLEAN DEFAULT TRUE,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    created_by BIGINT,
-    updated_by BIGINT
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_by BIGINT,
+
+    CONSTRAINT fk_chunk_kb FOREIGN KEY (kb_id) REFERENCES knowledge_base(id),
+    CONSTRAINT fk_chunk_document FOREIGN KEY (document_id) REFERENCES document(id)
 );
 
 CREATE TRIGGER update_document_chunk_updated_at
@@ -316,12 +347,9 @@ CREATE TRIGGER update_document_chunk_updated_at
 
 CREATE INDEX idx_document_chunk_kb_id ON document_chunk(kb_id);
 CREATE INDEX idx_document_chunk_document_id ON document_chunk(document_id);
-
--- 向量索引（ivfflat，适合 < 100 万数据量）
-CREATE INDEX vec_document_chunk_embedding_ivfflat
-    ON document_chunk
-    USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+CREATE INDEX idx_document_chunk_enabled ON document_chunk(enabled);
+CREATE INDEX idx_document_chunk_meta ON document_chunk USING gin (meta_json);
+CREATE INDEX vec_document_chunk_embedding ON document_chunk USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- ========================================
 -- 工作流模块（前缀: workflow_）
