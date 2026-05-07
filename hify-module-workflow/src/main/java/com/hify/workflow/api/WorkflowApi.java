@@ -59,6 +59,30 @@ public interface WorkflowApi {
     List<WorkflowEdgeDTO> getEdges(Long workflowId);
 
     /**
+     * 审批通过
+     *
+     * @param approvalId 审批记录 ID
+     * @param remark     备注
+     */
+    void approve(Long approvalId, String remark);
+
+    /**
+     * 审批拒绝
+     *
+     * @param approvalId 审批记录 ID
+     * @param remark     备注
+     */
+    void reject(Long approvalId, String remark);
+
+    /**
+     * 查询待审批列表
+     *
+     * @param instanceId 实例 ID
+     * @return 待审批记录列表
+     */
+    List<WorkflowApprovalDTO> getPendingApprovals(Long instanceId);
+
+    /**
      * 查询条件 DTO
      */
     @Data

@@ -8,6 +8,7 @@ import com.hify.workflow.api.WorkflowApi;
 import com.hify.workflow.api.dto.*;
 import com.hify.workflow.engine.WorkflowEngine;
 import com.hify.workflow.entity.Workflow;
+import com.hify.workflow.entity.WorkflowApproval;
 import com.hify.workflow.entity.WorkflowEdge;
 import com.hify.workflow.entity.WorkflowInstance;
 import com.hify.workflow.entity.WorkflowNode;
@@ -16,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -165,6 +167,55 @@ public class WorkflowExecutionService implements WorkflowApi {
                         .orderByAsc(WorkflowEdge::getEdgeIndex)
         );
         return edges.stream().map(this::toEdgeDTO).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void approve(Long approvalId, String remark) {
+        WorkflowApproval approval = workflowApprovalMapper.selectById(approvalId);
+        if (approval == null) {
+            throw new IllegalArgumentException("Approval not found: " + approvalId);
+        }
+        approval.setStatus("approved");
+        approval.setRemark(remark);
+        approval.setProcessedAt(LocalDateTime.now());
+        workflowApprovalMapper.updateById(approval);
+    }
+
+    @Override
+    @Transactional
+    public void reject(Long approvalId, String remark) {
+        WorkflowApproval approval = workflowApprovalMapper.selectById(approvalId);
+        if (approval == null) {
+            throw new IllegalArgumentException("Approval not found: " + approvalId);
+        }
+        approval.setStatus("rejected");
+        approval.setRemark(remark);
+        approval.setProcessedAt(LocalDateTime.now());
+        workflowApprovalMapper.updateById(approval);
+    }
+
+    @Override
+    public List<WorkflowApprovalDTO> getPendingApprovals(Long instanceId) {
+        List<WorkflowApproval> approvals = workflowApprovalMapper.selectList(
+                new LambdaQueryWrapper<WorkflowApproval>()
+                        .eq(WorkflowApproval::getInstanceId, instanceId)
+                        .eq(WorkflowApproval::getStatus, "pending")
+                        .orderByAsc(WorkflowApproval::getCreatedAt)
+        );
+        return approvals.stream().map(this::toApprovalDTO).collect(Collectors.toList());
+    }
+
+    private WorkflowApprovalDTO toApprovalDTO(WorkflowApproval approval) {
+        WorkflowApprovalDTO dto = new WorkflowApprovalDTO();
+        dto.setId(approval.getId());
+        dto.setInstanceId(approval.getInstanceId());
+        dto.setNodeId(approval.getNodeId());
+        dto.setStatus(approval.getStatus());
+        dto.setRemark(approval.getRemark());
+        dto.setCreatedAt(approval.getCreatedAt());
+        dto.setProcessedAt(approval.getProcessedAt());
+        return dto;
     }
 
     /**
