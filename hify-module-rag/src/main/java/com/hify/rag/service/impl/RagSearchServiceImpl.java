@@ -1,7 +1,10 @@
 package com.hify.rag.service.impl;
 
 import com.hify.rag.core.EmbeddingService;
+import com.hify.rag.core.EmbeddingServiceFactory;
+import com.hify.rag.entity.KnowledgeBase;
 import com.hify.rag.mapper.DocumentChunkMapper;
+import com.hify.rag.mapper.KnowledgeBaseMapper;
 import com.hify.rag.service.RagSearchService;
 import com.hify.rag.vo.ChunkSearchVO;
 import com.hify.rag.vo.RagSearchResult;
@@ -23,21 +26,35 @@ public class RagSearchServiceImpl implements RagSearchService {
     private DocumentChunkMapper documentChunkMapper;
 
     @Autowired
-    private EmbeddingService embeddingService;
+    private KnowledgeBaseMapper knowledgeBaseMapper;
+
+    @Autowired
+    private EmbeddingServiceFactory embeddingServiceFactory;
 
     @Override
     public List<RagSearchResult> search(Long kbId, String query, int topK, float threshold) {
         try {
-            // 1. Query 向量化
+            // 1. 获取知识库配置（包含 embedding 模型）
+            KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+            if (kb == null) {
+                log.error("Knowledge base not found: {}", kbId);
+                return List.of();
+            }
+
+            // 根据知识库的 embedding 模型获取对应的服务
+            EmbeddingService embeddingService = embeddingServiceFactory.getService(kb.getEmbeddingModel());
+            log.debug("Using embedding service for model: {}", kb.getEmbeddingModel());
+
+            // 2. Query 向量化
             float[] queryEmbedding = embeddingService.embed(query);
             String embeddingStr = vectorToString(queryEmbedding);
 
-            // 2. 向量检索（使用 pgvector 的 <=> 运算符）
+            // 3. 向量检索（使用 pgvector 的 <=> 运算符）
             // 注：阈值过滤在应用层处理，因为 pgvector 的距离运算符需要特殊处理
             List<ChunkSearchVO> chunks = documentChunkMapper.searchSimilarInKb(
                     embeddingStr, kbId, topK * 2); // 多取一些，后面过滤
 
-            // 3. 过滤相似度阈值
+            // 4. 过滤相似度阈值
             List<RagSearchResult> results = chunks.stream()
                     .filter(chunk -> chunk.getSimilarity() >= threshold)
                     .limit(topK)

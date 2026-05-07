@@ -74,6 +74,7 @@
         </el-form-item>
         <el-form-item label="Embedding 模型">
           <el-select v-model="createForm.embeddingModel" placeholder="选择模型">
+            <el-option label="nomic-embed-text (本地)" value="nomic-embed-text" />
             <el-option label="text-embedding-v2 (阿里)" value="text-embedding-v2" />
           </el-select>
         </el-form-item>
@@ -100,6 +101,7 @@
         </el-form-item>
         <el-form-item label="Embedding 模型">
           <el-select v-model="editForm.embeddingModel">
+            <el-option label="nomic-embed-text (本地)" value="nomic-embed-text" />
             <el-option label="text-embedding-v2 (阿里)" value="text-embedding-v2" />
           </el-select>
         </el-form-item>
@@ -145,7 +147,7 @@ const pagination = reactive({
 const createForm = reactive({
   name: '',
   description: '',
-  embeddingModel: 'text-embedding-v2',
+  embeddingModel: 'nomic-embed-text',
   chunkSize: 512,
   chunkOverlap: 50
 })

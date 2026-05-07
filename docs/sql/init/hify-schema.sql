@@ -377,15 +377,15 @@ CREATE TRIGGER update_workflow_definition_updated_at
 
 CREATE INDEX idx_workflow_definition_agent_id ON workflow_definition(agent_id);
 
-CREATE TABLE IF NOT EXISTS workflow_execution (
+CREATE TABLE IF NOT EXISTS workflow_instance (
     id BIGINT PRIMARY KEY,
     workflow_id BIGINT NOT NULL,
     status VARCHAR(16) DEFAULT 'running',
-    input_json JSONB,
-    output_json JSONB,
+    current_node_id VARCHAR(64),
+    context JSONB,
     error_msg TEXT,
     started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ended_at TIMESTAMP,
+    finished_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -393,13 +393,13 @@ CREATE TABLE IF NOT EXISTS workflow_execution (
     updated_by BIGINT
 );
 
-CREATE TRIGGER update_workflow_execution_updated_at
-    BEFORE UPDATE ON workflow_execution
+CREATE TRIGGER update_workflow_instance_updated_at
+    BEFORE UPDATE ON workflow_instance
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE INDEX idx_workflow_execution_workflow_id ON workflow_execution(workflow_id);
-CREATE INDEX idx_workflow_execution_status ON workflow_execution(status);
-CREATE INDEX idx_workflow_execution_started_at ON workflow_execution(started_at);
+CREATE INDEX idx_workflow_instance_workflow_id ON workflow_instance(workflow_id);
+CREATE INDEX idx_workflow_instance_status ON workflow_instance(status);
+CREATE INDEX idx_workflow_instance_started_at ON workflow_instance(started_at);
 
 CREATE TABLE IF NOT EXISTS workflow_node_execution (
     id BIGINT PRIMARY KEY,

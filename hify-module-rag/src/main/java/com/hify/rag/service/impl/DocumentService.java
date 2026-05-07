@@ -3,10 +3,12 @@ package com.hify.rag.service.impl;
 import com.hify.rag.api.DocumentApi;
 import com.hify.rag.core.DocumentParser;
 import com.hify.rag.core.EmbeddingService;
+import com.hify.rag.core.EmbeddingServiceFactory;
 import com.hify.rag.core.FileStorageService;
 import com.hify.rag.core.RecursiveChunker;
 import com.hify.rag.entity.Document;
 import com.hify.rag.entity.DocumentChunk;
+import com.hify.rag.entity.KnowledgeBase;
 import com.hify.rag.mapper.DocumentChunkMapper;
 import com.hify.rag.mapper.DocumentMapper;
 import com.hify.rag.mapper.KnowledgeBaseMapper;
@@ -48,7 +50,7 @@ public class DocumentService implements DocumentApi {
     private RecursiveChunker recursiveChunker;
 
     @Autowired
-    private EmbeddingService embeddingService;
+    private EmbeddingServiceFactory embeddingServiceFactory;
 
     @Autowired
     private FileStorageService fileStorageService;
@@ -169,13 +171,23 @@ public class DocumentService implements DocumentApi {
         documentMapper.updateById(doc);
 
         try {
-            // 1. 获取解析器
+            // 1. 获取知识库配置（包含 embedding 模型）
+            KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
+            if (kb == null) {
+                throw new RuntimeException("Knowledge base not found: " + doc.getKbId());
+            }
+
+            // 根据知识库的 embedding 模型获取对应的服务
+            EmbeddingService embeddingService = embeddingServiceFactory.getService(kb.getEmbeddingModel());
+            log.info("Using embedding service for model: {}", kb.getEmbeddingModel());
+
+            // 2. 获取解析器
             DocumentParser parser = documentParsers.stream()
                     .filter(p -> p.supports(doc.getFileType()))
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("不支持的文件类型: " + doc.getFileType()));
 
-            // 2. 从文件存储读取内容
+            // 3. 从文件存储读取内容
             // 文件路径存储在 parsed_content 中（作为临时字段，实际应该新建 file_path 字段）
             // 这里简化处理：如果有 parsed_content 直接用，否则从文件存储读取
             String content;
@@ -193,11 +205,11 @@ public class DocumentService implements DocumentApi {
                 throw new RuntimeException("文档内容为空");
             }
 
-            // 3. 分块
+            // 4. 分块
             List<String> chunks = recursiveChunker.chunk(content);
             log.info("Document {} split into {} chunks", documentId, chunks.size());
 
-            // 4. 向量化 + 存储
+            // 5. 向量化 + 存储
             for (int i = 0; i < chunks.size(); i++) {
                 String chunkContent = chunks.get(i);
                 float[] embedding = embeddingService.embed(chunkContent);
@@ -212,7 +224,7 @@ public class DocumentService implements DocumentApi {
                 documentChunkMapper.insert(chunk);
             }
 
-            // 5. 更新文档状态
+            // 6. 更新文档状态
             doc.setStatus("completed");
             doc.setTotalChunks(chunks.size());
             documentMapper.updateById(doc);
