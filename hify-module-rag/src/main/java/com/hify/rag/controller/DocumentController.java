@@ -15,17 +15,17 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/rag")
+@RequestMapping("/rag")
 @RequiredArgsConstructor
 public class DocumentController {
 
     private final DocumentApi documentApi;
 
     @PostMapping("/knowledge-bases/{kbId}/documents")
-    public Long uploadDocument(@PathVariable Long kbId,
+    public Long uploadDocument(@PathVariable("kbId") Long kbId,
                                @RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new BizException(ResultCode.BAD_REQUEST, "文件不能为空");
+            throw new BizException(ResultCode.PARAM_ERROR, "文件不能为空");
         }
 
         String fileName = file.getOriginalFilename();
@@ -42,14 +42,14 @@ public class DocumentController {
     }
 
     @GetMapping("/knowledge-bases/{kbId}/documents")
-    public PageResult<DocumentVO> listDocuments(@PathVariable Long kbId,
-                                                 @RequestParam(defaultValue = "1") int page,
-                                                 @RequestParam(defaultValue = "20") int pageSize) {
+    public PageResult<DocumentVO> listDocuments(@PathVariable("kbId") Long kbId,
+                                                 @RequestParam(value = "page", defaultValue = "1") int page,
+                                                 @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
         return documentApi.listByKbId(kbId, page, pageSize);
     }
 
     @GetMapping("/documents/{id}")
-    public DocumentVO getDocument(@PathVariable Long id) {
+    public DocumentVO getDocument(@PathVariable("id") Long id) {
         DocumentVO vo = documentApi.getVoById(id);
         if (vo == null) {
             throw new BizException(ResultCode.DATA_NOT_FOUND, "文档不存在");
@@ -58,13 +58,13 @@ public class DocumentController {
     }
 
     @DeleteMapping("/documents/{id}")
-    public void deleteDocument(@PathVariable Long id) {
+    public void deleteDocument(@PathVariable("id") Long id) {
         log.info("删除文档: {}", id);
         documentApi.delete(id);
     }
 
     @PostMapping("/documents/{id}/retry")
-    public void retryProcess(@PathVariable Long id) {
+    public void retryProcess(@PathVariable("id") Long id) {
         log.info("重试处理文档: {}", id);
         documentApi.retryProcess(id);
     }

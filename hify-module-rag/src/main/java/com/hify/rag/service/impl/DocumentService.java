@@ -62,7 +62,6 @@ public class DocumentService implements DocumentApi {
         doc.setFileSize(fileSize);
         doc.setStatus("pending");
         doc.setTotalChunks(0);
-        doc.setEnabled(true);
         documentMapper.insert(doc);
         return doc.getId();
     }
@@ -82,7 +81,6 @@ public class DocumentService implements DocumentApi {
         doc.setFileSize(file.getSize());
         doc.setStatus("pending");
         doc.setTotalChunks(0);
-        doc.setEnabled(true);
         documentMapper.insert(doc);
 
         // 2. 保存文件到存储
@@ -121,7 +119,6 @@ public class DocumentService implements DocumentApi {
         Page<Document> pageParam = new Page<>(page, pageSize);
         LambdaQueryWrapper<Document> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Document::getKbId, kbId)
-               .eq(Document::getDeleted, false)
                .orderByDesc(Document::getCreatedAt);
 
         IPage<Document> result = documentMapper.selectPage(pageParam, wrapper);
@@ -133,7 +130,7 @@ public class DocumentService implements DocumentApi {
         }).toList();
         voPage.setRecords(voList);
 
-        return new com.hify.common.web.entity.PageResult<>(voPage);
+        return new com.hify.common.web.entity.PageResult<>(voList, result.getCurrent(), result.getSize(), result.getTotal());
     }
 
     @Override

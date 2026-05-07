@@ -2,7 +2,10 @@ package com.hify.rag.core.impl;
 
 import com.hify.rag.core.FileStorageService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -17,6 +20,7 @@ import java.io.InputStream;
  */
 @Slf4j
 @Component
+@Primary
 public class ConfigurableFileStorageService implements FileStorageService {
 
     @Value("${hify.storage.type:local}")
@@ -41,7 +45,12 @@ public class ConfigurableFileStorageService implements FileStorageService {
     @Value("${hify.storage.oss.secret-key:}")
     private String ossSecretKey;
 
-    private final LocalFileStorageService localStorage = new LocalFileStorageService();
+    private final FileStorageService localStorage;
+
+    @Autowired
+    public ConfigurableFileStorageService(@Qualifier("ragFileStorageService") FileStorageService localStorage) {
+        this.localStorage = localStorage;
+    }
 
     @Override
     public String upload(Long kbId, String fileName, byte[] content) {

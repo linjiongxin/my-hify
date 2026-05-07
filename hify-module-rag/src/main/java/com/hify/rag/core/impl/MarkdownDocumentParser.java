@@ -23,6 +23,10 @@ public class MarkdownDocumentParser implements DocumentParser {
     private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile("```[\\s\\S]*?```");
     // 移除行内代码 `code`
     private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`([^`]+)`");
+    // 移除引用标记
+    private static final Pattern BLOCKQUOTE_PATTERN = Pattern.compile("^>\\s*", Pattern.MULTILINE);
+    // 移除水平线
+    private static final Pattern HR_PATTERN = Pattern.compile("^-{3,}$", Pattern.MULTILINE);
 
     @Override
     public String parse(InputStream input) {
@@ -49,9 +53,9 @@ public class MarkdownDocumentParser implements DocumentParser {
         // 移除粗体/斜体标记
         content = content.replaceAll("\\*+", "").replaceAll("_+", "");
         // 移除引用标记
-        content = content.replaceAll("^>\\s*", Pattern.MULTILINE);
+        content = BLOCKQUOTE_PATTERN.matcher(content).replaceAll("");
         // 移除水平线
-        content = content.replaceAll("^-{3,}$", Pattern.MULTILINE, "").replaceAll("^{*3}$", "");
+        content = HR_PATTERN.matcher(content).replaceAll("");
         return content.trim();
     }
 

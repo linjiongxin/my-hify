@@ -5,6 +5,7 @@ import com.hify.rag.dto.KnowledgeBaseCreateDTO;
 import com.hify.rag.dto.KnowledgeBaseUpdateDTO;
 import com.hify.rag.entity.KnowledgeBase;
 import com.hify.rag.vo.KnowledgeBaseVO;
+import lombok.Data;
 
 import java.util.List;
 

@@ -54,17 +54,17 @@ public class MybatisPlusConfig {
      * 注册 PostgreSQL 特殊类型的 TypeHandler：
      * <ul>
      *   <li>UUIDTypeHandler         → PostgreSQL UUID</li>
-     *   <li>StringArrayTypeHandler  → PostgreSQL TEXT[] / INT[] 等数组</li>
+     *   <li>StringArrayTypeHandler  → PostgreSQL TEXT[] / INT[] 等数组（字段级使用）</li>
      * </ul>
      * <p>
-     * 全局注册后，MyBatis-Plus 会自动为对应 Java 类型的字段选择对应 Handler，
-     * 无需在每个字段上单独指定 {@code @TableField(typeHandler = ...)}
+     * StringArrayTypeHandler 不可全局注册，因为它的 BaseTypeHandler<Object> 会匹配所有类型，
+     * 导致普通参数（如 Long id）被错误地使用此 Handler。正确用法是在字段上使用：
+     * {@code @TableField(typeHandler = StringArrayTypeHandler.class)}
      */
     @Bean
     public TypeHandler<?>[] typeHandlers() {
         return new TypeHandler<?>[] {
-            new UUIDTypeHandler(),
-            new StringArrayTypeHandler()
+            new UUIDTypeHandler()
         };
     }
 }

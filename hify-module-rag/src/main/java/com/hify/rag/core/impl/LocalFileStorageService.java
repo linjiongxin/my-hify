@@ -14,10 +14,10 @@ import java.nio.file.StandardOpenOption;
 import java.util.UUID;
 
 /**
- * 本地文件存储实现
+ * 本地文件存储实现（RAG 模块专用）
  */
 @Slf4j
-@Component
+@Component("ragFileStorageService")
 public class LocalFileStorageService implements FileStorageService {
 
     @Value("${hify.storage.local.base-path:/tmp/hify-rag}")

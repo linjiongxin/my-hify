@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/rag/knowledge-bases")
+@RequestMapping("/rag/knowledge-bases")
 @RequiredArgsConstructor
 public class KnowledgeBaseController {
 
@@ -36,7 +36,7 @@ public class KnowledgeBaseController {
     }
 
     @GetMapping("/{id}")
-    public KnowledgeBaseVO getById(@PathVariable Long id) {
+    public KnowledgeBaseVO getById(@PathVariable("id") Long id) {
         KnowledgeBaseVO vo = knowledgeBaseApi.getVoById(id);
         if (vo == null) {
             throw new BizException(ResultCode.DATA_NOT_FOUND, "知识库不存在");
@@ -45,13 +45,13 @@ public class KnowledgeBaseController {
     }
 
     @PutMapping("/{id}")
-    public void update(@PathVariable Long id, @RequestBody @Validated KnowledgeBaseUpdateDTO dto) {
+    public void update(@PathVariable("id") Long id, @RequestBody @Validated KnowledgeBaseUpdateDTO dto) {
         log.info("更新知识库: {}", id);
         knowledgeBaseApi.update(id, dto);
     }
 
     @DeleteMapping("/{id}")
-    public void delete(@PathVariable Long id) {
+    public void delete(@PathVariable("id") Long id) {
         log.info("删除知识库: {}", id);
         knowledgeBaseApi.delete(id);
     }

@@ -103,7 +103,6 @@ public class KnowledgeBaseService implements KnowledgeBaseApi {
     public PageResult<KnowledgeBaseVO> list(KnowledgeBaseQueryDTO query) {
         Page<KnowledgeBase> page = new Page<>(query.getPage(), query.getPageSize());
         LambdaQueryWrapper<KnowledgeBase> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(KnowledgeBase::getDeleted, false);
         if (StringUtils.hasText(query.getName())) {
             wrapper.like(KnowledgeBase::getName, query.getName());
         }
@@ -121,6 +120,6 @@ public class KnowledgeBaseService implements KnowledgeBaseApi {
         }).toList();
         voPage.setRecords(voList);
 
-        return new PageResult<>(voPage);
+        return new PageResult<>(voList, result.getCurrent(), result.getSize(), result.getTotal());
     }
 }

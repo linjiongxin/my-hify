@@ -50,4 +50,11 @@ public class DocumentChunk extends BaseEntity {
      * 是否启用
      */
     private Boolean enabled;
+
+    /**
+     * 逻辑删除字段（映射到 is_deleted 列）
+     */
+    @com.baomidou.mybatisplus.annotation.TableField("is_deleted")
+    @com.baomidou.mybatisplus.annotation.TableLogic
+    private Boolean deleted;
 }

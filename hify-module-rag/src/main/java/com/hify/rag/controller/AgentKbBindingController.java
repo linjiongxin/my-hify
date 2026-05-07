@@ -14,7 +14,7 @@ import java.util.List;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/rag/agent-kb")
+@RequestMapping("/rag/agent-kb")
 @RequiredArgsConstructor
 public class AgentKbBindingController {
 
@@ -27,21 +27,21 @@ public class AgentKbBindingController {
     }
 
     @DeleteMapping("/unbind")
-    public void unbind(@RequestParam Long agentId, @RequestParam Long kbId) {
+    public void unbind(@RequestParam("agentId") Long agentId, @RequestParam("kbId") Long kbId) {
         log.info("解绑 Agent {} 从知识库 {}", agentId, kbId);
         agentKnowledgeBaseApi.unbind(agentId, kbId);
     }
 
     @GetMapping("/agent/{agentId}")
-    public List<AgentKnowledgeBaseVO> getByAgentId(@PathVariable Long agentId) {
+    public List<AgentKnowledgeBaseVO> getByAgentId(@PathVariable("agentId") Long agentId) {
         return agentKnowledgeBaseApi.getByAgentId(agentId);
     }
 
     @PutMapping("/update")
-    public void updateBinding(@RequestParam Long agentId,
-                              @RequestParam Long kbId,
-                              @RequestParam(required = false) Integer topK,
-                              @RequestParam(required = false) java.math.BigDecimal similarityThreshold) {
+    public void updateBinding(@RequestParam("agentId") Long agentId,
+                              @RequestParam("kbId") Long kbId,
+                              @RequestParam(value = "topK", required = false) Integer topK,
+                              @RequestParam(value = "similarityThreshold", required = false) java.math.BigDecimal similarityThreshold) {
         log.info("更新 Agent {} 知识库 {} 绑定配置", agentId, kbId);
         agentKnowledgeBaseApi.updateBinding(agentId, kbId, topK, similarityThreshold);
     }
