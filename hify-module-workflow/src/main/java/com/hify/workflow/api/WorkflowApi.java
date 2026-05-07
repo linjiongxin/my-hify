@@ -75,6 +75,24 @@ public interface WorkflowApi {
     void reject(Long approvalId, String remark);
 
     /**
+     * 保存工作流节点（全量替换）
+     *
+     * @param workflowId 工作流 ID
+     * @param nodes      节点列表
+     * @return 保存后的节点列表
+     */
+    List<WorkflowNodeDTO> saveNodes(Long workflowId, List<WorkflowNodeDTO> nodes);
+
+    /**
+     * 保存工作流连线（全量替换）
+     *
+     * @param workflowId 工作流 ID
+     * @param edges      连线列表
+     * @return 保存后的连线列表
+     */
+    List<WorkflowEdgeDTO> saveEdges(Long workflowId, List<WorkflowEdgeDTO> edges);
+
+    /**
      * 查询待审批列表
      *
      * @param instanceId 实例 ID

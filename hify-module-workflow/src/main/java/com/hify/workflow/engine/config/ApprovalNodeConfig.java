@@ -5,5 +5,7 @@ package com.hify.workflow.engine.config;
  */
 public record ApprovalNodeConfig(
         String prompt,
+        String approveBranch,
+        String rejectBranch,
         String errorBranch
 ) implements NodeConfig {}

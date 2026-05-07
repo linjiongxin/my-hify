@@ -8,7 +8,9 @@ import com.hify.workflow.api.WorkflowApi;
 import com.hify.workflow.api.dto.WorkflowApprovalDTO;
 import com.hify.workflow.api.dto.WorkflowCreateRequest;
 import com.hify.workflow.api.dto.WorkflowDTO;
+import com.hify.workflow.api.dto.WorkflowEdgeDTO;
 import com.hify.workflow.api.dto.WorkflowInstanceDTO;
+import com.hify.workflow.api.dto.WorkflowNodeDTO;
 import com.hify.workflow.api.dto.WorkflowStartRequest;
 import com.hify.workflow.api.dto.WorkflowUpdateRequest;
 import com.hify.workflow.engine.WorkflowEngine;
@@ -353,5 +355,82 @@ class WorkflowExecutionServiceTest {
 
         assertThat(approval.getStatus()).isEqualTo("rejected");
         verify(workflowEngine).resumeAfterApproval(100L, "rejected");
+    }
+
+    @Test
+    void shouldSaveNodes_whenWorkflowExists() {
+        Workflow existingWorkflow = new Workflow();
+        existingWorkflow.setId(1L);
+
+        when(workflowMapper.selectById(1L)).thenReturn(existingWorkflow);
+        when(workflowNodeMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(0);
+        doAnswer(invocation -> {
+            WorkflowNode node = invocation.getArgument(0);
+            node.setId(100L);
+            return 1;
+        }).when(workflowNodeMapper).insert(any(WorkflowNode.class));
+
+        WorkflowNodeDTO nodeDto = new WorkflowNodeDTO();
+        nodeDto.setNodeId("node_start");
+        nodeDto.setType("START");
+        nodeDto.setName("开始");
+        nodeDto.setConfig("{}");
+
+        List<WorkflowNodeDTO> result = workflowExecutionService.saveNodes(1L, List.of(nodeDto));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getNodeId()).isEqualTo("node_start");
+        verify(workflowNodeMapper).delete(any(LambdaQueryWrapper.class));
+        verify(workflowNodeMapper).insert(any(WorkflowNode.class));
+    }
+
+    @Test
+    void shouldThrowException_whenSaveNodesForNonExistingWorkflow() {
+        when(workflowMapper.selectById(999L)).thenReturn(null);
+
+        WorkflowNodeDTO nodeDto = new WorkflowNodeDTO();
+        nodeDto.setNodeId("node_start");
+
+        assertThatThrownBy(() -> workflowExecutionService.saveNodes(999L, List.of(nodeDto)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Workflow not found");
+    }
+
+    @Test
+    void shouldSaveEdges_whenWorkflowExists() {
+        Workflow existingWorkflow = new Workflow();
+        existingWorkflow.setId(1L);
+
+        when(workflowMapper.selectById(1L)).thenReturn(existingWorkflow);
+        when(workflowEdgeMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(0);
+        doAnswer(invocation -> {
+            WorkflowEdge edge = invocation.getArgument(0);
+            edge.setId(200L);
+            return 1;
+        }).when(workflowEdgeMapper).insert(any(WorkflowEdge.class));
+
+        WorkflowEdgeDTO edgeDto = new WorkflowEdgeDTO();
+        edgeDto.setSourceNode("node_start");
+        edgeDto.setTargetNode("node_end");
+        edgeDto.setEdgeIndex(0);
+
+        List<WorkflowEdgeDTO> result = workflowExecutionService.saveEdges(1L, List.of(edgeDto));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getSourceNode()).isEqualTo("node_start");
+        verify(workflowEdgeMapper).delete(any(LambdaQueryWrapper.class));
+        verify(workflowEdgeMapper).insert(any(WorkflowEdge.class));
+    }
+
+    @Test
+    void shouldThrowException_whenSaveEdgesForNonExistingWorkflow() {
+        when(workflowMapper.selectById(999L)).thenReturn(null);
+
+        WorkflowEdgeDTO edgeDto = new WorkflowEdgeDTO();
+        edgeDto.setSourceNode("node_start");
+
+        assertThatThrownBy(() -> workflowExecutionService.saveEdges(999L, List.of(edgeDto)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Workflow not found");
     }
 }

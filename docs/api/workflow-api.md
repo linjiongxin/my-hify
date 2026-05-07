@@ -74,7 +74,41 @@ GET /api/workflow?page=1&pageSize=20&name=退款&status=published
 
 ---
 
-#### 6. 获取节点列表
+#### 6. 保存节点（全量替换）
+```http
+PUT /api/workflow/{id}/nodes
+Content-Type: application/json
+```
+
+**请求体**：节点列表（全量替换旧节点）
+```json
+[
+  {
+    "nodeId": "node_start",
+    "type": "START",
+    "name": "开始",
+    "config": "{}",
+    "positionX": 100,
+    "positionY": 100
+  },
+  {
+    "nodeId": "node_llm",
+    "type": "LLM",
+    "name": "评分",
+    "config": "{\"model\":\"gpt-4\",\"prompt\":\"评分：${content}\",\"outputVar\":\"score\"}",
+    "positionX": 300,
+    "positionY": 100
+  }
+]
+```
+
+**响应**：保存后的节点列表（含生成的 `id`）
+
+> 注意：调用后旧节点会被全部删除，再写入新节点。
+
+---
+
+#### 7. 获取节点列表
 ```http
 GET /api/workflow/{id}/nodes
 ```
@@ -107,7 +141,37 @@ GET /api/workflow/{id}/nodes
 
 ---
 
-#### 7. 获取连线列表
+#### 8. 保存连线（全量替换）
+```http
+PUT /api/workflow/{id}/edges
+Content-Type: application/json
+```
+
+**请求体**：连线列表（全量替换旧连线）
+```json
+[
+  {
+    "sourceNode": "node_start",
+    "targetNode": "node_llm",
+    "condition": null,
+    "edgeIndex": 0
+  },
+  {
+    "sourceNode": "node_llm",
+    "targetNode": "node_approval",
+    "condition": "${score} >= 80",
+    "edgeIndex": 0
+  }
+]
+```
+
+**响应**：保存后的连线列表（含生成的 `id`）
+
+> 注意：调用后旧连线会被全部删除，再写入新连线。
+
+---
+
+#### 9. 获取连线列表
 ```http
 GET /api/workflow/{id}/edges
 ```
@@ -305,16 +369,3 @@ GET /api/workflow/instance/{instanceId}/pending-approvals
 
 ---
 
-## 缺失接口（待实现）
-
-当前 API 缺少**保存节点和连线**的接口，前端无法通过 REST API 配置工作流拓扑。建议补充：
-
-```http
-POST /api/workflow/{id}/nodes
-PUT /api/workflow/{id}/nodes
-
-POST /api/workflow/{id}/edges
-PUT /api/workflow/{id}/edges
-```
-
-或在工作流 create/update 接口中接收完整的 `nodes` + `edges` 数组。

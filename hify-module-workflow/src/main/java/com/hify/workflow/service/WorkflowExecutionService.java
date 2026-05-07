@@ -173,6 +173,59 @@ public class WorkflowExecutionService implements WorkflowApi {
 
     @Override
     @Transactional
+    public List<WorkflowNodeDTO> saveNodes(Long workflowId, List<WorkflowNodeDTO> nodes) {
+        Workflow workflow = workflowMapper.selectById(workflowId);
+        if (workflow == null) {
+            throw new IllegalArgumentException("Workflow not found: " + workflowId);
+        }
+
+        workflowNodeMapper.delete(
+                new LambdaQueryWrapper<WorkflowNode>()
+                        .eq(WorkflowNode::getWorkflowId, workflowId)
+        );
+
+        return nodes.stream().map(dto -> {
+            WorkflowNode node = new WorkflowNode();
+            node.setWorkflowId(workflowId);
+            node.setNodeId(dto.getNodeId());
+            node.setType(dto.getType());
+            node.setName(dto.getName());
+            node.setConfig(dto.getConfig());
+            node.setPositionX(dto.getPositionX());
+            node.setPositionY(dto.getPositionY());
+            node.setRetryConfig(dto.getRetryConfig());
+            workflowNodeMapper.insert(node);
+            return toNodeDTO(node);
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public List<WorkflowEdgeDTO> saveEdges(Long workflowId, List<WorkflowEdgeDTO> edges) {
+        Workflow workflow = workflowMapper.selectById(workflowId);
+        if (workflow == null) {
+            throw new IllegalArgumentException("Workflow not found: " + workflowId);
+        }
+
+        workflowEdgeMapper.delete(
+                new LambdaQueryWrapper<WorkflowEdge>()
+                        .eq(WorkflowEdge::getWorkflowId, workflowId)
+        );
+
+        return edges.stream().map(dto -> {
+            WorkflowEdge edge = new WorkflowEdge();
+            edge.setWorkflowId(workflowId);
+            edge.setSourceNode(dto.getSourceNode());
+            edge.setTargetNode(dto.getTargetNode());
+            edge.setCondition(dto.getCondition());
+            edge.setEdgeIndex(dto.getEdgeIndex());
+            workflowEdgeMapper.insert(edge);
+            return toEdgeDTO(edge);
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
     public void approve(Long approvalId, String remark) {
         WorkflowApproval approval = workflowApprovalMapper.selectById(approvalId);
         if (approval == null) {

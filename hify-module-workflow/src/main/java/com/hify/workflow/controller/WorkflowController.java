@@ -68,4 +68,16 @@ public class WorkflowController {
     public List<WorkflowEdgeDTO> getEdges(@PathVariable("id") Long id) {
         return workflowApi.getEdges(id);
     }
+
+    @PutMapping("/{id}/nodes")
+    public List<WorkflowNodeDTO> saveNodes(@PathVariable("id") Long id, @RequestBody List<WorkflowNodeDTO> nodes) {
+        log.info("保存工作流节点: workflowId={}, nodeCount={}", id, nodes.size());
+        return workflowApi.saveNodes(id, nodes);
+    }
+
+    @PutMapping("/{id}/edges")
+    public List<WorkflowEdgeDTO> saveEdges(@PathVariable("id") Long id, @RequestBody List<WorkflowEdgeDTO> edges) {
+        log.info("保存工作流连线: workflowId={}, edgeCount={}", id, edges.size());
+        return workflowApi.saveEdges(id, edges);
+    }
 }
