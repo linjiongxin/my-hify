@@ -29,15 +29,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        try {
-            String token = resolveToken(request);
-            if (StringUtils.hasText(token) && jwtUtil.validateToken(token)) {
-                CurrentUser user = jwtUtil.parseToken(token);
-                UserContext.set(user);
-                log.debug("JWT 认证成功, userId={}, uri={}", user.getUserId(), request.getRequestURI());
+        String token = resolveToken(request);
+        if (StringUtils.hasText(token)) {
+            try {
+                if (jwtUtil.validateToken(token)) {
+                    CurrentUser user = jwtUtil.parseToken(token);
+                    UserContext.set(user);
+                    log.debug("JWT 认证成功, userId={}, uri={}", user.getUserId(), request.getRequestURI());
+                } else {
+                    log.warn("JWT 认证失败, uri={}", request.getRequestURI());
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"code\":401,\"message\":\"登录已过期，请重新登录\",\"success\":false}");
+                    return;
+                }
+            } catch (Exception e) {
+                log.warn("JWT 解析异常, uri={}", request.getRequestURI(), e);
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"code\":401,\"message\":\"登录已过期，请重新登录\",\"success\":false}");
+                return;
             }
-        } catch (Exception e) {
-            log.warn("JWT 解析异常, uri={}", request.getRequestURI(), e);
         }
 
         try {
