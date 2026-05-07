@@ -1,10 +1,10 @@
 package com.hify.workflow.engine.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.engine.NodeExecutor;
 import com.hify.workflow.engine.NodeResult;
+import com.hify.workflow.engine.config.ConditionNodeConfig;
+import com.hify.workflow.engine.config.NodeConfigParser;
 import com.hify.workflow.entity.WorkflowNode;
 import org.springframework.stereotype.Component;
 
@@ -22,35 +22,32 @@ import java.util.regex.Pattern;
 public class ConditionNodeExecutor implements NodeExecutor {
 
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
-    private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    private final NodeConfigParser nodeConfigParser;
     private final ScriptEngineManager scriptEngineManager;
 
-    public ConditionNodeExecutor() {
+    public ConditionNodeExecutor(NodeConfigParser nodeConfigParser) {
+        this.nodeConfigParser = nodeConfigParser;
         this.scriptEngineManager = new ScriptEngineManager();
     }
 
     @Override
     public NodeResult execute(WorkflowNode node, ExecutionContext context) {
         try {
-            // 解析配置
-            JsonNode config = objectMapper.readTree(node.getConfig());
-            String expression = config.has("expression") ? config.get("expression").asText() : null;
-            String trueBranch = config.has("trueBranch") ? config.get("trueBranch").asText() : null;
-            String falseBranch = config.has("falseBranch") ? config.get("falseBranch").asText() : null;
+            ConditionNodeConfig config = (ConditionNodeConfig) nodeConfigParser.parse(node);
 
-            if (expression == null) {
+            if (config.expression() == null) {
                 return NodeResult.failure("Condition node config missing expression");
             }
 
-            // 替换表达式中的占位符
-            String resolvedExpression = replacePlaceholders(expression, context);
+            // 替换表达式中的占位符（字符串值需加引号，供 JS 引擎使用）
+            String resolvedExpression = replacePlaceholders(config.expression(), context);
 
             // 计算表达式
             boolean result = evaluateExpression(resolvedExpression);
 
             // 根据结果选择分支
-            String nextNodeId = result ? trueBranch : falseBranch;
+            String nextNodeId = result ? config.trueBranch() : config.falseBranch();
 
             return NodeResult.success(nextNodeId);
 
@@ -60,7 +57,7 @@ public class ConditionNodeExecutor implements NodeExecutor {
     }
 
     /**
-     * 替换字符串中的 ${variable} 占位符
+     * 替换字符串中的 ${variable} 占位符（字符串值加引号，供 JS 表达式使用）
      */
     private String replacePlaceholders(String template, ExecutionContext context) {
         if (template == null) {

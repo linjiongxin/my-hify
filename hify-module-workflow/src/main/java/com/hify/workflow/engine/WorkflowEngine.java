@@ -2,6 +2,8 @@ package com.hify.workflow.engine;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.hify.workflow.config.RetryConfig;
+import com.hify.workflow.engine.config.NodeConfig;
+import com.hify.workflow.engine.config.NodeConfigParser;
 import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.entity.*;
 import com.hify.workflow.mapper.*;
@@ -48,6 +50,9 @@ public class WorkflowEngine {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private NodeConfigParser nodeConfigParser;
 
     /**
      * 应用启动时恢复未完成的实例
@@ -297,11 +302,10 @@ public class WorkflowEngine {
         log.error("Workflow failure: instanceId={}, error={}", instance.getId(), errorMsg);
 
         // 1. 检查节点的 errorBranch 配置
-        if (node != null && node.getConfig() != null) {
+        if (node != null) {
             try {
-                Map<String, Object> nodeConfig = objectMapper.readValue(node.getConfig(),
-                        new TypeReference<Map<String, Object>>() {});
-                String errorBranch = (String) nodeConfig.get("errorBranch");
+                NodeConfig config = nodeConfigParser.parse(node);
+                String errorBranch = config.errorBranch();
                 if (errorBranch != null && !errorBranch.isEmpty()) {
                     // 从 edges 找到 errorBranch 对应的目标节点
                     List<WorkflowEdge> errorEdges = workflowEdgeMapper.selectList(
@@ -323,7 +327,7 @@ public class WorkflowEngine {
                     }
                 }
             } catch (Exception e) {
-                log.warn("Failed to parse node retry config: {}", e.getMessage());
+                log.warn("Failed to parse node config for error branch: {}", e.getMessage());
             }
         }
 
@@ -356,40 +360,20 @@ public class WorkflowEngine {
      * 获取节点重试配置（优先级：节点级 > 工作流级 > 全局默认）
      */
     private RetryConfig getRetryConfig(WorkflowNode node, WorkflowInstance instance) {
-        RetryConfig config = new RetryConfig();
-
         // 1. 检查节点级配置
         if (node != null && node.getRetryConfig() != null) {
-            try {
-                Map<String, Object> nodeConfig = objectMapper.readValue(node.getRetryConfig(),
-                        new TypeReference<Map<String, Object>>() {});
-                if (nodeConfig.containsKey("maxRetries")) {
-                    config.setMaxRetries(((Number) nodeConfig.get("maxRetries")).intValue());
-                }
-                if (nodeConfig.containsKey("retryIntervalSeconds")) {
-                    config.setRetryIntervalSeconds(((Number) nodeConfig.get("retryIntervalSeconds")).intValue());
-                }
+            RetryConfig config = nodeConfigParser.parseRetryConfig(node.getRetryConfig());
+            if (config != null) {
                 return config;
-            } catch (Exception e) {
-                log.warn("Failed to parse node retry config: {}", e.getMessage());
             }
         }
 
         // 2. 检查工作流级配置
         Workflow workflow = workflowMapper.selectById(instance.getWorkflowId());
         if (workflow != null && workflow.getRetryConfig() != null) {
-            try {
-                Map<String, Object> workflowConfig = objectMapper.readValue(workflow.getRetryConfig(),
-                        new TypeReference<Map<String, Object>>() {});
-                if (workflowConfig.containsKey("maxRetries")) {
-                    config.setMaxRetries(((Number) workflowConfig.get("maxRetries")).intValue());
-                }
-                if (workflowConfig.containsKey("retryIntervalSeconds")) {
-                    config.setRetryIntervalSeconds(((Number) workflowConfig.get("retryIntervalSeconds")).intValue());
-                }
+            RetryConfig config = nodeConfigParser.parseRetryConfig(workflow.getRetryConfig());
+            if (config != null) {
                 return config;
-            } catch (Exception e) {
-                log.warn("Failed to parse workflow retry config: {}", e.getMessage());
             }
         }
 

@@ -1,17 +1,15 @@
 package com.hify.workflow.engine.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.engine.NodeExecutor;
 import com.hify.workflow.engine.NodeResult;
+import com.hify.workflow.engine.config.ApprovalNodeConfig;
+import com.hify.workflow.engine.config.NodeConfigParser;
+import com.hify.workflow.engine.util.PlaceholderUtils;
 import com.hify.workflow.entity.WorkflowApproval;
 import com.hify.workflow.entity.WorkflowNode;
 import com.hify.workflow.mapper.WorkflowApprovalMapper;
 import org.springframework.stereotype.Component;
-
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 审批节点执行器
@@ -20,28 +18,25 @@ import java.util.regex.Pattern;
 @Component
 public class ApprovalNodeExecutor implements NodeExecutor {
 
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
-    private static final ObjectMapper objectMapper = new ObjectMapper();
-
     public static final String STATUS_PENDING = "pending";
     public static final String STATUS_APPROVED = "approved";
     public static final String STATUS_REJECTED = "rejected";
 
+    private final NodeConfigParser nodeConfigParser;
     private final WorkflowApprovalMapper workflowApprovalMapper;
 
-    public ApprovalNodeExecutor(WorkflowApprovalMapper workflowApprovalMapper) {
+    public ApprovalNodeExecutor(NodeConfigParser nodeConfigParser, WorkflowApprovalMapper workflowApprovalMapper) {
+        this.nodeConfigParser = nodeConfigParser;
         this.workflowApprovalMapper = workflowApprovalMapper;
     }
 
     @Override
     public NodeResult execute(WorkflowNode node, ExecutionContext context) {
         try {
-            // 解析配置
-            JsonNode config = objectMapper.readTree(node.getConfig());
-            String prompt = config.has("prompt") ? config.get("prompt").asText() : null;
+            ApprovalNodeConfig config = (ApprovalNodeConfig) nodeConfigParser.parse(node);
 
             // 替换 prompt 中的占位符
-            String resolvedPrompt = replacePlaceholders(prompt, context);
+            String resolvedPrompt = PlaceholderUtils.replace(config.prompt(), context);
 
             // 获取实例 ID（从上下文中获取）
             Long instanceId = context.getLong("instanceId");
@@ -65,26 +60,5 @@ public class ApprovalNodeExecutor implements NodeExecutor {
         } catch (Exception e) {
             return NodeResult.failure("Approval creation failed: " + e.getMessage());
         }
-    }
-
-    /**
-     * 替换字符串中的 ${variable} 占位符
-     */
-    private String replacePlaceholders(String template, ExecutionContext context) {
-        if (template == null) {
-            return null;
-        }
-
-        Matcher matcher = PLACEHOLDER_PATTERN.matcher(template);
-        StringBuffer result = new StringBuffer();
-
-        while (matcher.find()) {
-            String varName = matcher.group(1);
-            Object value = context.get(varName);
-            matcher.appendReplacement(result, Matcher.quoteReplacement(value != null ? value.toString() : ""));
-        }
-
-        matcher.appendTail(result);
-        return result.toString();
     }
 }
