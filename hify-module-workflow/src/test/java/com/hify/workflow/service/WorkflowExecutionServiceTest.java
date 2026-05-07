@@ -320,4 +320,38 @@ class WorkflowExecutionServiceTest {
 
         assertThat(approvals).isEmpty();
     }
+
+    @Test
+    void shouldResumeExecution_whenApprovalIsApproved() {
+        WorkflowApproval approval = new WorkflowApproval();
+        approval.setId(1L);
+        approval.setInstanceId(100L);
+        approval.setNodeId("node_approval");
+        approval.setStatus("pending");
+
+        when(workflowApprovalMapper.selectById(1L)).thenReturn(approval);
+        when(workflowApprovalMapper.updateById(any(WorkflowApproval.class))).thenReturn(1);
+
+        workflowExecutionService.approve(1L, "Approved by manager");
+
+        assertThat(approval.getStatus()).isEqualTo("approved");
+        verify(workflowEngine).resumeAfterApproval(100L, "approved");
+    }
+
+    @Test
+    void shouldResumeExecutionWithRejectedAction_whenApprovalIsRejected() {
+        WorkflowApproval approval = new WorkflowApproval();
+        approval.setId(1L);
+        approval.setInstanceId(100L);
+        approval.setNodeId("node_approval");
+        approval.setStatus("pending");
+
+        when(workflowApprovalMapper.selectById(1L)).thenReturn(approval);
+        when(workflowApprovalMapper.updateById(any(WorkflowApproval.class))).thenReturn(1);
+
+        workflowExecutionService.reject(1L, "Rejected by manager");
+
+        assertThat(approval.getStatus()).isEqualTo("rejected");
+        verify(workflowEngine).resumeAfterApproval(100L, "rejected");
+    }
 }

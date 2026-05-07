@@ -13,6 +13,7 @@ import com.hify.workflow.entity.WorkflowEdge;
 import com.hify.workflow.entity.WorkflowInstance;
 import com.hify.workflow.entity.WorkflowNode;
 import com.hify.workflow.mapper.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ import java.util.stream.Collectors;
  * 工作流执行服务
  * <p>实现 WorkflowApi 接口，提供工作流的 CRUD 和执行能力</p>
  */
+@Slf4j
 @Service
 public class WorkflowExecutionService implements WorkflowApi {
 
@@ -180,6 +182,10 @@ public class WorkflowExecutionService implements WorkflowApi {
         approval.setRemark(remark);
         approval.setProcessedAt(LocalDateTime.now());
         workflowApprovalMapper.updateById(approval);
+
+        // 恢复工作流执行（通过分支）
+        log.info("Resuming workflow after approval: instanceId={}, action=approved", approval.getInstanceId());
+        workflowEngine.resumeAfterApproval(approval.getInstanceId(), "approved");
     }
 
     @Override
@@ -193,6 +199,9 @@ public class WorkflowExecutionService implements WorkflowApi {
         approval.setRemark(remark);
         approval.setProcessedAt(LocalDateTime.now());
         workflowApprovalMapper.updateById(approval);
+
+        // 恢复工作流执行（拒绝分支）
+        workflowEngine.resumeAfterApproval(approval.getInstanceId(), "rejected");
     }
 
     @Override

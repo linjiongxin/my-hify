@@ -16,13 +16,13 @@ public class WorkflowApprovalController {
     private final com.hify.workflow.api.WorkflowApi workflowApi;
 
     @PostMapping("/{id}/approve")
-    public void approve(@PathVariable("id") Long id, @RequestParam(required = false) String remark) {
+    public void approve(@PathVariable("id") Long id, @RequestParam(name = "remark", required = false) String remark) {
         log.info("审批通过: approvalId={}, remark={}", id, remark);
         workflowApi.approve(id, remark);
     }
 
     @PostMapping("/{id}/reject")
-    public void reject(@PathVariable("id") Long id, @RequestParam(required = false) String remark) {
+    public void reject(@PathVariable("id") Long id, @RequestParam(name = "remark", required = false) String remark) {
         log.info("审批拒绝: approvalId={}, remark={}", id, remark);
         workflowApi.reject(id, remark);
     }

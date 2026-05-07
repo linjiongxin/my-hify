@@ -39,9 +39,9 @@ public class ApprovalNodeExecutor implements NodeExecutor {
             String resolvedPrompt = PlaceholderUtils.replace(config.prompt(), context);
 
             // 获取实例 ID（从上下文中获取）
-            Long instanceId = context.getLong("instanceId");
+            Long instanceId = context.getLong("_instanceId");
             if (instanceId == null) {
-                return NodeResult.failure("Approval node requires instanceId in context");
+                return NodeResult.failure("Approval node requires _instanceId in context");
             }
 
             // 创建审批记录
