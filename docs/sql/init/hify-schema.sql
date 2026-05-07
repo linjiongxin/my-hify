@@ -335,6 +335,7 @@ CREATE TABLE IF NOT EXISTS document_chunk (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
     updated_by BIGINT,
 
     CONSTRAINT fk_chunk_kb FOREIGN KEY (kb_id) REFERENCES knowledge_base(id),

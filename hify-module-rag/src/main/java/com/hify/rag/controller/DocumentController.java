@@ -29,16 +29,11 @@ public class DocumentController {
         }
 
         String fileName = file.getOriginalFilename();
-        String fileType = extractFileType(fileName);
         Long fileSize = file.getSize();
-
         log.info("上传文档到知识库 {}, 文件名: {}, 大小: {}", kbId, fileName, fileSize);
-        Long docId = documentApi.uploadDocument(kbId, fileName, fileType, fileSize);
 
-        // TODO: 保存文件到存储，然后异步处理
-        // 这里需要集成文件存储服务
-
-        return docId;
+        // 保存文件到存储并触发异步处理（解析 → 分块 → 向量化）
+        return documentApi.uploadAndSave(kbId, file);
     }
 
     @GetMapping("/knowledge-bases/{kbId}/documents")
@@ -67,12 +62,5 @@ public class DocumentController {
     public void retryProcess(@PathVariable("id") Long id) {
         log.info("重试处理文档: {}", id);
         documentApi.retryProcess(id);
-    }
-
-    private String extractFileType(String fileName) {
-        if (fileName == null || !fileName.contains(".")) {
-            return "unknown";
-        }
-        return fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
     }
 }

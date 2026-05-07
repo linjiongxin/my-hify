@@ -3,6 +3,7 @@ package com.hify.rag.api;
 import com.hify.common.web.entity.PageResult;
 import com.hify.rag.entity.Document;
 import com.hify.rag.vo.DocumentVO;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -12,9 +13,14 @@ import java.util.List;
 public interface DocumentApi {
 
     /**
-     * 上传文档
+     * 上传文档（仅保存元数据）
      */
     Long uploadDocument(Long kbId, String fileName, String fileType, Long fileSize);
+
+    /**
+     * 上传文件并保存，触发异步处理
+     */
+    Long uploadAndSave(Long kbId, MultipartFile file);
 
     /**
      * 获取文档详情

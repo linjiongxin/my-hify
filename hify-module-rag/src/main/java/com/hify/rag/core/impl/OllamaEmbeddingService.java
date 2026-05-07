@@ -47,6 +47,23 @@ public class OllamaEmbeddingService implements EmbeddingService {
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> responseBody = response.getBody();
+
+                // OpenAI-compatible format: data[0].embedding
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> data = (List<Map<String, Object>>) responseBody.get("data");
+                if (data != null && !data.isEmpty()) {
+                    @SuppressWarnings("unchecked")
+                    List<Number> embedding = (List<Number>) data.get(0).get("embedding");
+                    if (embedding != null) {
+                        float[] result = new float[embedding.size()];
+                        for (int i = 0; i < embedding.size(); i++) {
+                            result[i] = embedding.get(i).floatValue();
+                        }
+                        return result;
+                    }
+                }
+
+                // Fallback: direct embedding field (某些旧版 Ollama 格式)
                 @SuppressWarnings("unchecked")
                 List<Number> embedding = (List<Number>) responseBody.get("embedding");
                 if (embedding != null) {
@@ -58,7 +75,7 @@ public class OllamaEmbeddingService implements EmbeddingService {
                 }
             }
 
-            log.warn("Unexpected Ollama embedding response format");
+            log.warn("Unexpected Ollama embedding response format, body: {}", response.getBody());
             return new float[EMBEDDING_DIM];
 
         } catch (Exception e) {

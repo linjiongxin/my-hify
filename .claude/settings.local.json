@@ -163,7 +163,9 @@
       "Bash(brew list *)",
       "Bash(pkill -9 -f \"hify-server\")",
       "Bash(pkill -9 -f \"spring-boot:run\")",
-      "Bash(echo \"PID: $!\")"
+      "Bash(echo \"PID: $!\")",
+      "Bash(mkdir -p /tmp/hify-rag)",
+      "Read(//tmp/**)"
     ]
   }
 }

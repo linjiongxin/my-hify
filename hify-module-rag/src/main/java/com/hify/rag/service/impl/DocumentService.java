@@ -19,8 +19,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -55,6 +57,10 @@ public class DocumentService implements DocumentApi {
     @Autowired
     private FileStorageService fileStorageService;
 
+    @Autowired
+    @Lazy
+    private DocumentService self;
+
     @Override
     public Long uploadDocument(Long kbId, String fileName, String fileType, Long fileSize) {
         Document doc = new Document();
@@ -69,8 +75,11 @@ public class DocumentService implements DocumentApi {
     }
 
     /**
-     * 上传文件并保存（供 Controller 调用）
+     * 上传文件并保存，触发异步处理
+     * 注意：不加 @Transactional，确保 insert/update 立即提交，
+     * 否则 @Async 在事务提交前执行，查不到刚插入的文档
      */
+    @Override
     public Long uploadAndSave(Long kbId, MultipartFile file) {
         String fileName = file.getOriginalFilename();
         String fileType = extractFileType(fileName);
@@ -90,8 +99,12 @@ public class DocumentService implements DocumentApi {
             String filePath = fileStorageService.upload(kbId, file);
             log.info("文件保存成功: kbId={}, docId={}, path={}", kbId, doc.getId(), filePath);
 
-            // 3. 触发异步处理
-            processDocumentAsync(doc.getId());
+            // 3. 保存文件路径
+            doc.setFilePath(filePath);
+            documentMapper.updateById(doc);
+
+            // 4. 通过代理触发异步处理（确保 @Async 和 @Transactional 生效）
+            self.processDocumentAsync(doc.getId());
         } catch (Exception e) {
             log.error("文件保存失败: kbId={}, fileName={}", kbId, fileName, e);
             doc.setStatus("failed");
@@ -137,21 +150,30 @@ public class DocumentService implements DocumentApi {
 
     @Override
     public void delete(Long id) {
-        Document doc = documentMapper.selectById(id);
-        if (doc != null) {
-            doc.setDeleted(true);
-            documentMapper.updateById(doc);
-        }
+        documentMapper.deleteById(id);
     }
 
     @Override
     public void retryProcess(Long id) {
         Document doc = documentMapper.selectById(id);
-        if (doc != null && "failed".equals(doc.getStatus())) {
+        if (doc != null && ("failed".equals(doc.getStatus()) || "pending".equals(doc.getStatus()))) {
             doc.setStatus("pending");
             doc.setErrorMessage(null);
             documentMapper.updateById(doc);
-            processDocumentAsync(id);
+            self.processDocumentAsync(id);
+        }
+    }
+
+    /**
+     * 独立事务标记文档为失败（REQUIRES_NEW 确保即使主事务回滚也能更新状态）
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markFailed(Long documentId, String errorMessage) {
+        Document doc = documentMapper.selectById(documentId);
+        if (doc != null) {
+            doc.setStatus("failed");
+            doc.setErrorMessage(errorMessage);
+            documentMapper.updateById(doc);
         }
     }
 
@@ -187,18 +209,16 @@ public class DocumentService implements DocumentApi {
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("不支持的文件类型: " + doc.getFileType()));
 
-            // 3. 从文件存储读取内容
-            // 文件路径存储在 parsed_content 中（作为临时字段，实际应该新建 file_path 字段）
-            // 这里简化处理：如果有 parsed_content 直接用，否则从文件存储读取
+            // 3. 从文件存储读取内容并解析
             String content;
             if (doc.getParsedContent() != null && !doc.getParsedContent().isBlank()) {
                 // 已有解析内容（可能是之前上传时直接传的文本）
                 content = doc.getParsedContent();
             } else {
-                // 从文件存储读取
-                // 注意：这里需要文件路径，当前设计缺失，建议增加 file_path 字段
-                // 暂时抛出异常提示
-                throw new RuntimeException("文件路径未配置，请先上传文件");
+                // 从文件存储读取并解析
+                try (InputStream is = fileStorageService.getInputStream(doc.getFilePath())) {
+                    content = parser.parse(is);
+                }
             }
 
             if (content == null || content.isBlank()) {
@@ -233,9 +253,8 @@ public class DocumentService implements DocumentApi {
 
         } catch (Exception e) {
             log.error("Failed to process document: {}", documentId, e);
-            doc.setStatus("failed");
-            doc.setErrorMessage(e.getMessage());
-            documentMapper.updateById(doc);
+            // 使用独立事务更新失败状态，避免主事务回滚导致 UPDATE 也失败
+            self.markFailed(documentId, e.getMessage());
         }
     }
 

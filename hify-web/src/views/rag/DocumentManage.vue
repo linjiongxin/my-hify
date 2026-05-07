@@ -130,7 +130,7 @@ const loadData = async () => {
     }
     const res = await fetch(`/api/rag/knowledge-bases/${kbId.value}/documents?${params}`)
     const data = await res.json()
-    tableData.value = data.list || []
+    tableData.value = data.records || []
     pagination.total = data.total || 0
   } catch (e) {
     ElMessage.error('加载失败')
@@ -195,11 +195,11 @@ const getStatusText = (status) => {
 }
 
 onMounted(() => {
-  // 从 URL 获取 kbId
+  // 从 URL 获取 kbId（保持为字符串以避免大整数精度丢失）
   const path = window.location.pathname
   const match = path.match(/\/rag\/kb\/(\d+)\/documents/)
   if (match) {
-    kbId.value = parseInt(match[1])
+    kbId.value = match[1]
   }
   if (kbId.value) {
     loadData()
