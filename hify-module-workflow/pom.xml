@@ -17,6 +17,11 @@
     <dependencies>
         <dependency>
             <groupId>com.hify</groupId>
+            <artifactId>hify-common-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.hify</groupId>
             <artifactId>hify-common-web</artifactId>
         </dependency>
 
@@ -25,9 +30,22 @@
             <artifactId>hify-module-model</artifactId>
         </dependency>
 
+        <!-- MyBatis Plus -->
         <dependency>
-            <groupId>com.hify</groupId>
-            <artifactId>hify-module-agent</artifactId>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+
+        <!-- PostgreSQL -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
