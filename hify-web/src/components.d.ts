@@ -11,6 +11,9 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ApiCallNodeConfig: typeof import('./components/workflow/node-configs/ApiCallNodeConfig.vue')['default']
+    ApprovalNodeConfig: typeof import('./components/workflow/node-configs/ApprovalNodeConfig.vue')['default']
+    ConditionNodeConfig: typeof import('./components/workflow/node-configs/ConditionNodeConfig.vue')['default']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElBreadcrumb: typeof import('element-plus/es')['ElBreadcrumb']
@@ -44,10 +47,17 @@ declare module 'vue' {
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
     ElUpload: typeof import('element-plus/es')['ElUpload']
+    FlowCanvas: typeof import('./components/workflow/FlowCanvas.vue')['default']
     HifyFormDialog: typeof import('./components/HifyFormDialog.vue')['default']
     HifyTable: typeof import('./components/HifyTable.vue')['default']
+    KnowledgeNodeConfig: typeof import('./components/workflow/node-configs/KnowledgeNodeConfig.vue')['default']
+    LlmNodeConfig: typeof import('./components/workflow/node-configs/LlmNodeConfig.vue')['default']
+    NodeConfigPanel: typeof import('./components/workflow/NodeConfigPanel.vue')['default']
+    NodePalette: typeof import('./components/workflow/NodePalette.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    StartEndNodeConfig: typeof import('./components/workflow/node-configs/StartEndNodeConfig.vue')['default']
+    ToolNodeConfig: typeof import('./components/workflow/node-configs/ToolNodeConfig.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

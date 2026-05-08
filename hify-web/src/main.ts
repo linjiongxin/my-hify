@@ -1,4 +1,6 @@
 import 'element-plus/dist/index.css'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
 import './styles/index.css'
 
 import { createApp } from 'vue'

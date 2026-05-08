@@ -2,6 +2,7 @@ package com.hify.workflow.controller;
 
 import com.hify.common.core.enums.ResultCode;
 import com.hify.common.core.exception.BizException;
+import com.hify.common.web.entity.Result;
 import com.hify.workflow.api.WorkflowApi;
 import com.hify.workflow.api.dto.WorkflowApprovalDTO;
 import com.hify.workflow.api.dto.WorkflowInstanceDTO;
@@ -25,22 +26,22 @@ public class WorkflowInstanceController {
     private final WorkflowApi workflowApi;
 
     @PostMapping
-    public String start(@RequestBody @Validated WorkflowStartRequest dto) {
+    public Result<String> start(@RequestBody @Validated WorkflowStartRequest dto) {
         log.info("触发工作流执行: workflowId={}", dto.getWorkflowId());
-        return workflowApi.start(dto);
+        return Result.success(workflowApi.start(dto));
     }
 
     @GetMapping("/{instanceId}")
-    public WorkflowInstanceDTO getInstanceById(@PathVariable("instanceId") Long instanceId) {
+    public Result<WorkflowInstanceDTO> getInstanceById(@PathVariable("instanceId") Long instanceId) {
         WorkflowInstanceDTO dto = workflowApi.getInstanceById(instanceId);
         if (dto == null) {
             throw new BizException(ResultCode.DATA_NOT_FOUND, "工作流实例不存在");
         }
-        return dto;
+        return Result.success(dto);
     }
 
     @GetMapping("/{instanceId}/pending-approvals")
-    public List<WorkflowApprovalDTO> getPendingApprovals(@PathVariable("instanceId") Long instanceId) {
-        return workflowApi.getPendingApprovals(instanceId);
+    public Result<List<WorkflowApprovalDTO>> getPendingApprovals(@PathVariable("instanceId") Long instanceId) {
+        return Result.success(workflowApi.getPendingApprovals(instanceId));
     }
 }

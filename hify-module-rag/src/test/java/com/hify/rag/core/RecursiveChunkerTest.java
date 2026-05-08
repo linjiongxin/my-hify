@@ -30,9 +30,10 @@ class RecursiveChunkerTest {
         String text = "第一段内容。\n\n第二段内容。";
         List<String> chunks = chunker.chunk(text);
 
-        assertEquals(2, chunks.size());
-        assertEquals("第一段内容。", chunks.get(0));
-        assertEquals("第二段内容。", chunks.get(1));
+        // 短段落（<=30 字符）会合并到同一块，避免标题单独成块
+        assertEquals(1, chunks.size());
+        assertTrue(chunks.get(0).contains("第一段内容"));
+        assertTrue(chunks.get(0).contains("第二段内容"));
     }
 
     @Test
@@ -49,11 +50,11 @@ class RecursiveChunkerTest {
 
     @Test
     void shouldEstimateTokensCorrectly() {
-        // 英文单词估算
-        assertEquals(3, chunker.estimateTokens("hello world test")); // 3 words * 1.5
+        // 英文单词估算: 3 words * 1.5 = 4.5 -> (int)4
+        assertEquals(4, chunker.estimateTokens("hello world test"));
 
-        // 中文字符估算
-        assertEquals(5, chunker.estimateTokens("你好世界")); // 4 chars
+        // 中文字符估算: 4 chars + 1 word (整串被 split 为 1 段) * 1.5 = 5.5 -> (int)5
+        assertEquals(5, chunker.estimateTokens("你好世界"));
 
         // 混合估算
         int mixed = chunker.estimateTokens("hello你好world世界test");
@@ -65,6 +66,7 @@ class RecursiveChunkerTest {
         String text = "段落1\n\n\n\n段落2";
         List<String> chunks = chunker.chunk(text);
 
-        assertEquals(2, chunks.size());
+        // 多个空行会被正则合并为段落分隔，短段落继续合并
+        assertEquals(1, chunks.size());
     }
 }

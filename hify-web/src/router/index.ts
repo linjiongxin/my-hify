@@ -65,7 +65,13 @@ const router = createRouter({
     {
       path: '/workflows',
       name: 'workflows',
-      component: () => import('../views/PlaceholderView.vue'),
+      component: () => import('../views/workflow/WorkflowList.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/workflows/:id/edit',
+      name: 'workflow-edit',
+      component: () => import('../views/workflow/WorkflowEditor.vue'),
       meta: { requiresAuth: true },
     },
   ],
