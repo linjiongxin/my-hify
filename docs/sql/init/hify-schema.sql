@@ -129,8 +129,6 @@ CREATE TABLE IF NOT EXISTS agent (
     max_tokens INT DEFAULT 2048,
     top_p DECIMAL(3,2) DEFAULT 1.0,
     welcome_message TEXT,
-    tools_json JSONB,
-    mcp_servers_json JSONB,
     enabled BOOLEAN DEFAULT TRUE,
     workflow_id BIGINT,
     execution_mode VARCHAR(20) DEFAULT 'react',
