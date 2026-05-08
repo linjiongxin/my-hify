@@ -63,4 +63,14 @@ public class Agent extends BaseEntity {
      * 是否启用
      */
     private Boolean enabled;
+
+    /**
+     * 绑定主工作流 ID
+     */
+    private Long workflowId;
+
+    /**
+     * 执行模式: react / workflow
+     */
+    private String executionMode;
 }

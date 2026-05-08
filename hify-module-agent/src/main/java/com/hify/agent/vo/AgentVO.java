@@ -18,6 +18,8 @@ public class AgentVO implements Serializable {
     private BigDecimal topP;
     private String welcomeMessage;
     private Boolean enabled;
+    private Long workflowId;
+    private String executionMode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<AgentToolVO> tools;

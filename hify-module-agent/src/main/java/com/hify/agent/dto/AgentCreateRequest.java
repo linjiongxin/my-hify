@@ -17,4 +17,6 @@ public class AgentCreateRequest {
     private BigDecimal topP = new BigDecimal("1.0");
     private String welcomeMessage;
     private Boolean enabled = true;
+    private Long workflowId;
+    private String executionMode = "react";
 }

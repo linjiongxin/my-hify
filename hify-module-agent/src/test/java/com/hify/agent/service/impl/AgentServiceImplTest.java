@@ -325,4 +325,97 @@ class AgentServiceImplTest {
                     assertThat(biz.getCode()).isEqualTo(ResultCode.DATA_NOT_FOUND.getCode());
                 });
     }
+
+    @Test
+    void shouldCreateAgent_withWorkflowMode() {
+        AgentCreateRequest request = new AgentCreateRequest();
+        request.setName("Workflow Agent");
+        request.setModelId("gpt-4o");
+        request.setWorkflowId(10L);
+        request.setExecutionMode("workflow");
+
+        ModelConfigDTO modelConfigDTO = new ModelConfigDTO();
+        modelConfigDTO.setId(1L);
+        modelConfigDTO.setModelId("gpt-4o");
+        when(modelConfigApi.getModelByModelId("gpt-4o")).thenReturn(modelConfigDTO);
+        doAnswer(invocation -> {
+            Agent agent = invocation.getArgument(0);
+            agent.setId(101L);
+            return 1;
+        }).when(agentMapper).insert(any(Agent.class));
+
+        Long agentId = agentService.createAgent(request);
+
+        assertThat(agentId).isEqualTo(101L);
+        org.mockito.ArgumentCaptor<Agent> captor = org.mockito.ArgumentCaptor.forClass(Agent.class);
+        verify(agentMapper).insert(captor.capture());
+        Agent saved = captor.getValue();
+        assertThat(saved.getWorkflowId()).isEqualTo(10L);
+        assertThat(saved.getExecutionMode()).isEqualTo("workflow");
+    }
+
+    @Test
+    void shouldDefaultExecutionModeToReact_whenNotSpecified() {
+        AgentCreateRequest request = new AgentCreateRequest();
+        request.setName("Default Agent");
+        request.setModelId("gpt-4o");
+        // 不设置 executionMode
+
+        ModelConfigDTO modelConfigDTO = new ModelConfigDTO();
+        modelConfigDTO.setId(1L);
+        modelConfigDTO.setModelId("gpt-4o");
+        when(modelConfigApi.getModelByModelId("gpt-4o")).thenReturn(modelConfigDTO);
+        doAnswer(invocation -> {
+            Agent agent = invocation.getArgument(0);
+            agent.setId(102L);
+            return 1;
+        }).when(agentMapper).insert(any(Agent.class));
+
+        agentService.createAgent(request);
+
+        org.mockito.ArgumentCaptor<Agent> captor = org.mockito.ArgumentCaptor.forClass(Agent.class);
+        verify(agentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getExecutionMode()).isEqualTo("react");
+    }
+
+    @Test
+    void shouldReturnWorkflowFields_whenGetAgentDetail() {
+        Agent existingAgent = new Agent();
+        existingAgent.setId(1L);
+        existingAgent.setName("Workflow Agent");
+        existingAgent.setModelId("gpt-4o");
+        existingAgent.setWorkflowId(5L);
+        existingAgent.setExecutionMode("workflow");
+        existingAgent.setEnabled(true);
+
+        when(agentMapper.selectById(1L)).thenReturn(existingAgent);
+        when(agentToolMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+
+        AgentVO vo = agentService.getAgentDetail(1L);
+
+        assertThat(vo.getWorkflowId()).isEqualTo(5L);
+        assertThat(vo.getExecutionMode()).isEqualTo("workflow");
+    }
+
+    @Test
+    void shouldUpdateWorkflowFields_whenUpdateAgent() {
+        Agent existingAgent = new Agent();
+        existingAgent.setId(1L);
+        existingAgent.setName("Old Name");
+        existingAgent.setModelId("gpt-4o");
+
+        AgentUpdateRequest request = new AgentUpdateRequest();
+        request.setWorkflowId(20L);
+        request.setExecutionMode("workflow");
+
+        when(agentMapper.selectById(1L)).thenReturn(existingAgent);
+        when(agentMapper.updateById(any(Agent.class))).thenReturn(1);
+
+        agentService.updateAgent(1L, request);
+
+        org.mockito.ArgumentCaptor<Agent> captor = org.mockito.ArgumentCaptor.forClass(Agent.class);
+        verify(agentMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getWorkflowId()).isEqualTo(20L);
+        assertThat(captor.getValue().getExecutionMode()).isEqualTo("workflow");
+    }
 }

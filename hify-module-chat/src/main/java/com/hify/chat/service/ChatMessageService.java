@@ -19,6 +19,9 @@ import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmMessage;
 import com.hify.model.api.dto.LlmStreamChunk;
+import com.hify.workflow.api.WorkflowApi;
+import com.hify.workflow.api.dto.WorkflowInstanceDTO;
+import com.hify.workflow.api.dto.WorkflowStartRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -50,8 +53,14 @@ public class ChatMessageService {
     private final AgentApi agentApi;
     private final AgentKnowledgeBaseApi agentKnowledgeBaseApi;
     private final RagSearchApi ragSearchApi;
+    private final WorkflowApi workflowApi;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
+
+    /** workflow 模式轮询间隔（毫秒） */
+    private static final long WORKFLOW_POLL_INTERVAL_MS = 500;
+    /** workflow 模式最大轮询次数（30 秒） */
+    private static final int WORKFLOW_MAX_POLL_ATTEMPTS = 60;
 
     /** 从 DB/Redis 加载的最大原始消息条数（20 轮 × 2） */
     private static final int MAX_HISTORY_MESSAGES = 40;
@@ -74,6 +83,12 @@ public class ChatMessageService {
 
         // 保存用户消息
         ChatMessage userMsg = saveUserMessage(sessionId, message);
+
+        // workflow 模式：直接驱动工作流，不走 ReAct LLM
+        if ("workflow".equals(agent.getExecutionMode()) && agent.getWorkflowId() != null) {
+            handleWorkflowChat(session, agent, message, emitter);
+            return;
+        }
 
         // 构建 RAG 检索上下文
         String ragContext = buildRagContext(agent, message);
@@ -379,5 +394,163 @@ public class ChatMessageService {
         ChatMessageVO vo = new ChatMessageVO();
         BeanUtils.copyProperties(message, vo);
         return vo;
+    }
+
+    // ==================== Workflow 模式 ====================
+
+    /**
+     * workflow 模式对话：启动工作流并轮询结果
+     */
+    private void handleWorkflowChat(ChatSession session, AgentDTO agent, String message, SseEmitter emitter) {
+        try {
+            WorkflowStartRequest request = new WorkflowStartRequest();
+            request.setWorkflowId(agent.getWorkflowId());
+            request.setInputs(Map.of("userMessage", message, "sessionId", session.getId()));
+
+            String instanceId = workflowApi.start(request);
+            log.info("Workflow chat started: agentId={}, workflowId={}, instanceId={}",
+                    agent.getId(), agent.getWorkflowId(), instanceId);
+
+            emitter.send(SseEmitter.event()
+                    .name("workflow_started")
+                    .data(Map.of("instanceId", instanceId, "status", "RUNNING")));
+
+            pollWorkflowResult(instanceId, emitter, session);
+
+        } catch (Exception e) {
+            log.error("Workflow chat failed: sessionId={}, agentId={}", session.getId(), agent.getId(), e);
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("error")
+                        .data(Map.of("code", "WORKFLOW_ERROR", "message", e.getMessage())));
+                emitter.complete();
+            } catch (Exception ex) {
+                emitter.completeWithError(ex);
+            }
+        }
+    }
+
+    /**
+     * 轮询工作流实例状态，通过 SSE 推送结果
+     */
+    private void pollWorkflowResult(String instanceId, SseEmitter emitter, ChatSession session) {
+        java.util.concurrent.ScheduledExecutorService scheduler =
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "workflow-poll-" + instanceId);
+                    t.setDaemon(true);
+                    return t;
+                });
+
+        final int[] attempts = {0};
+
+        scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                attempts[0]++;
+                WorkflowInstanceDTO instance = workflowApi.getInstanceById(Long.valueOf(instanceId));
+
+                if (instance == null) {
+                    emitter.send(SseEmitter.event()
+                            .name("error")
+                            .data(Map.of("code", "INSTANCE_NOT_FOUND", "message", "Workflow instance not found")));
+                    emitter.complete();
+                    scheduler.shutdown();
+                    return;
+                }
+
+                String status = instance.getStatus();
+                if ("COMPLETED".equals(status)) {
+                    String reply = extractWorkflowReply(instance.getContext());
+                    emitter.send(SseEmitter.event()
+                            .name("message")
+                            .data(Map.of("content", reply != null ? reply : "", "timestamp", System.currentTimeMillis())));
+                    emitter.send(SseEmitter.event()
+                            .name("done")
+                            .data(Map.of("status", "completed")));
+                    emitter.complete();
+                    scheduler.shutdown();
+                    saveWorkflowResult(session, reply, instanceId);
+                } else if ("FAILED".equals(status)) {
+                    String errorMsg = instance.getErrorMsg() != null ? instance.getErrorMsg() : "Workflow failed";
+                    emitter.send(SseEmitter.event()
+                            .name("error")
+                            .data(Map.of("code", "WORKFLOW_FAILED", "message", errorMsg)));
+                    emitter.complete();
+                    scheduler.shutdown();
+                    saveWorkflowResult(session, "Error: " + errorMsg, instanceId);
+                } else if (attempts[0] >= WORKFLOW_MAX_POLL_ATTEMPTS) {
+                    emitter.send(SseEmitter.event()
+                            .name("workflow_pending")
+                            .data(Map.of("instanceId", instanceId, "status", status,
+                                    "message", "Workflow is still running, please check later")));
+                    emitter.complete();
+                    scheduler.shutdown();
+                }
+            } catch (Exception e) {
+                log.error("Poll workflow error: instanceId={}", instanceId, e);
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("error")
+                            .data(Map.of("code", "POLL_ERROR", "message", e.getMessage())));
+                    emitter.complete();
+                } catch (Exception ex) {
+                    // ignore
+                }
+                scheduler.shutdown();
+            }
+        }, WORKFLOW_POLL_INTERVAL_MS, WORKFLOW_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * 从工作流上下文中提取最终回复
+     */
+    private String extractWorkflowReply(String contextJson) {
+        if (contextJson == null || contextJson.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> context = objectMapper.readValue(contextJson, new TypeReference<>() {});
+            Object reply = context.get("reply");
+            if (reply != null) {
+                return reply.toString();
+            }
+            Object llmResponse = context.get("llmResponse");
+            if (llmResponse != null) {
+                return llmResponse.toString();
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("Failed to extract workflow reply", e);
+            return null;
+        }
+    }
+
+    /**
+     * 保存工作流执行结果到消息表
+     */
+    private void saveWorkflowResult(ChatSession session, String content, String instanceId) {
+        try {
+            Integer maxSeq = chatMessageMapper.selectMaxSeqBySessionId(session.getId());
+            int nextSeq = (maxSeq == null ? 0 : maxSeq) + 1;
+
+            ChatMessage msg = new ChatMessage();
+            msg.setSessionId(session.getId());
+            msg.setSeq(nextSeq);
+            msg.setRole("assistant");
+            msg.setContent(content != null ? content : "");
+            msg.setStatus("completed");
+            msg.setModel("workflow:" + instanceId);
+            chatMessageMapper.insert(msg);
+
+            session.setMessageCount((session.getMessageCount() != null ? session.getMessageCount() : 0) + 2);
+            session.setLastMessageAt(LocalDateTime.now());
+            if ("新对话".equals(session.getTitle()) && content != null && !content.isBlank()) {
+                session.setTitle(content.substring(0, Math.min(20, content.length())));
+            }
+            chatSessionMapper.updateById(session);
+
+            cacheMessages(session.getId());
+        } catch (Exception e) {
+            log.error("Failed to save workflow result: sessionId={}", session.getId(), e);
+        }
     }
 }

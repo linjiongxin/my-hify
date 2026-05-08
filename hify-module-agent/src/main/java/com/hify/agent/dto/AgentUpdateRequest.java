@@ -14,4 +14,6 @@ public class AgentUpdateRequest {
     private BigDecimal topP;
     private String welcomeMessage;
     private Boolean enabled;
+    private Long workflowId;
+    private String executionMode;
 }

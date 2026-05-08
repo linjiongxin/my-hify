@@ -152,7 +152,7 @@ public class WorkflowEngine {
      * @param instanceId 实例 ID
      * @param nodeId      节点 ID
      */
-    @Async
+    @Async("commonExecutor")
     public void executeAsync(Long instanceId, String nodeId) {
         log.info("Executing node: instanceId={}, nodeId={}", instanceId, nodeId);
 

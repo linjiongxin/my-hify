@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS agent (
     tools_json JSONB,
     mcp_servers_json JSONB,
     enabled BOOLEAN DEFAULT TRUE,
+    workflow_id BIGINT,
+    execution_mode VARCHAR(20) DEFAULT 'react',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,

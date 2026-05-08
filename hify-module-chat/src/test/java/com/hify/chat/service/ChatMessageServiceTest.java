@@ -15,6 +15,11 @@ import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmMessage;
 import com.hify.model.api.dto.LlmStreamChunk;
 import com.hify.model.api.dto.LlmUsage;
+import com.hify.rag.api.AgentKnowledgeBaseApi;
+import com.hify.rag.api.RagSearchApi;
+import com.hify.workflow.api.WorkflowApi;
+import com.hify.workflow.api.dto.WorkflowInstanceDTO;
+import com.hify.workflow.api.dto.WorkflowStartRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +34,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +62,15 @@ class ChatMessageServiceTest {
 
     @Mock
     private AgentApi agentApi;
+
+    @Mock
+    private AgentKnowledgeBaseApi agentKnowledgeBaseApi;
+
+    @Mock
+    private RagSearchApi ragSearchApi;
+
+    @Mock
+    private WorkflowApi workflowApi;
 
     @Mock
     private StringRedisTemplate stringRedisTemplate;
@@ -91,6 +106,9 @@ class ChatMessageServiceTest {
         agent.setEnabled(true);
 
         emitter = new SseEmitter(0L);
+
+        // 默认 RAG 无绑定，避免所有 react 模式测试都需要重复 mock
+        lenient().when(agentKnowledgeBaseApi.getByAgentId(anyLong())).thenReturn(Collections.emptyList());
     }
 
     @Test
@@ -372,6 +390,62 @@ class ChatMessageServiceTest {
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getContent()).isEqualTo("hello");
         assertThat(result.get(1).getContent()).isEqualTo("hi");
+    }
+
+    @Test
+    void shouldStartWorkflow_whenAgentInWorkflowMode() throws Exception {
+        agent.setExecutionMode("workflow");
+        agent.setWorkflowId(10L);
+
+        when(chatSessionService.getSessionOrThrow(100L, 1L)).thenReturn(session);
+        when(agentApi.getAgentById(10L)).thenReturn(agent);
+        when(chatMessageMapper.selectMaxSeqBySessionId(1L)).thenReturn(5);
+        when(chatMessageMapper.insert(any(ChatMessage.class))).thenAnswer(inv -> {
+            ChatMessage m = inv.getArgument(0);
+            m.setId(100L);
+            return 1;
+        });
+
+        when(workflowApi.start(any(WorkflowStartRequest.class))).thenReturn("100");
+
+        chatMessageService.streamChat(100L, 1L, "我要退款", emitter);
+
+        // 验证 workflowApi.start 被调用
+        ArgumentCaptor<WorkflowStartRequest> reqCaptor = ArgumentCaptor.forClass(WorkflowStartRequest.class);
+        verify(workflowApi).start(reqCaptor.capture());
+        assertThat(reqCaptor.getValue().getWorkflowId()).isEqualTo(10L);
+
+        // 验证 LLM 未被调用
+        verify(llmGatewayApi, never()).streamChat(anyString(), any(LlmChatRequest.class), any());
+    }
+
+    @Test
+    void shouldStartWorkflow_whenAgentHasWorkflowIdButNoMode() throws Exception {
+        // executionMode 为 null，默认走 react，即使 workflowId 有值
+        agent.setExecutionMode(null);
+        agent.setWorkflowId(10L);
+
+        when(chatSessionService.getSessionOrThrow(100L, 1L)).thenReturn(session);
+        when(agentApi.getAgentById(10L)).thenReturn(agent);
+        when(chatMessageMapper.selectMaxSeqBySessionId(1L)).thenReturn(5);
+        when(chatMessageMapper.insert(any(ChatMessage.class))).thenAnswer(inv -> {
+            ChatMessage m = inv.getArgument(0);
+            m.setId(100L);
+            return 1;
+        });
+        when(chatMessageMapper.selectHistoryBySessionId(1L)).thenReturn(Collections.emptyList());
+
+        doAnswer(inv -> {
+            Consumer<LlmStreamChunk> cb = inv.getArgument(2);
+            cb.accept(LlmStreamChunk.builder().content("ok").finish(true).finishReason("stop").build());
+            return null;
+        }).when(llmGatewayApi).streamChat(anyString(), any(LlmChatRequest.class), any());
+
+        chatMessageService.streamChat(100L, 1L, "hello", emitter);
+
+        // react 模式不应调 workflow
+        verify(workflowApi, never()).start(any(WorkflowStartRequest.class));
+        verify(llmGatewayApi).streamChat(anyString(), any(LlmChatRequest.class), any());
     }
 
     private ChatMessage createMessage(Long sessionId, int seq, String role, String content) {

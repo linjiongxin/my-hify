@@ -76,6 +76,9 @@ public class AgentServiceImpl implements AgentService, AgentApi {
         if (agent.getEnabled() == null) {
             agent.setEnabled(true);
         }
+        if (agent.getExecutionMode() == null) {
+            agent.setExecutionMode("react");
+        }
         agentMapper.insert(agent);
         return agent.getId();
     }
