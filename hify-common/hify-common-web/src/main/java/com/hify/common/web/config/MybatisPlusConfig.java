@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.config.GlobalConfig;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import com.hify.common.web.handler.JsonbTypeHandler;
 import com.hify.common.web.handler.MybatisMetaObjectHandler;
 import com.hify.common.web.handler.StringArrayTypeHandler;
 import com.hify.common.web.handler.UUIDTypeHandler;
@@ -64,7 +65,8 @@ public class MybatisPlusConfig {
     @Bean
     public TypeHandler<?>[] typeHandlers() {
         return new TypeHandler<?>[] {
-            new UUIDTypeHandler()
+            new UUIDTypeHandler(),
+            new JsonbTypeHandler()
         };
     }
 }

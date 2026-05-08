@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.agent.api.AgentApi;
 import com.hify.agent.api.dto.AgentDTO;
+import com.hify.agent.api.dto.AgentToolDTO;
 import com.hify.chat.entity.ChatMessage;
 import com.hify.rag.api.AgentKnowledgeBaseApi;
 import com.hify.rag.api.RagSearchApi;
@@ -20,7 +21,10 @@ import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmMessage;
 import com.hify.model.api.dto.LlmStreamChunk;
+import com.hify.model.api.dto.LlmToolCall;
+import com.hify.model.api.dto.LlmToolDefinition;
 import com.hify.workflow.api.WorkflowApi;
+import com.hify.workflow.api.dto.WorkflowDTO;
 import com.hify.workflow.api.dto.WorkflowInstanceDTO;
 import com.hify.workflow.api.dto.WorkflowStartRequest;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +38,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -86,12 +91,6 @@ public class ChatMessageService {
         // 保存用户消息
         ChatMessage userMsg = saveUserMessage(sessionId, message);
 
-        // workflow 模式：直接驱动工作流，不走 ReAct LLM
-        if ("workflow".equals(agent.getExecutionMode()) && agent.getWorkflowId() != null) {
-            handleWorkflowChat(session, agent, message, emitter);
-            return;
-        }
-
         // 构建 RAG 检索上下文
         String ragContext = buildRagContext(agent, message);
 
@@ -99,9 +98,96 @@ public class ChatMessageService {
         List<LlmMessage> context = buildLlmContext(sessionId, agent, message, ragContext);
 
         // 将 RAG 上下文注入最后一条用户消息（模型对 user message 中的指令遵循度更高）
-        String finalUserMessage;
+        String finalUserMessage = buildFinalUserMessage(message, ragContext);
+        context.add(LlmMessage.user(finalUserMessage));
+
+        // 创建 assistant 占位消息
+        ChatMessage assistantMsg = createAssistantPlaceholder(sessionId, userMsg.getSeq() + 1, agent.getModelId());
+
+        try {
+            doStreamChat(agent, context, assistantMsg, emitter, startTime, session, sessionId);
+        } catch (Exception e) {
+            log.error("LLM 调用失败, sessionId={}", sessionId, e);
+            handleLlmError(assistantMsg, emitter, e);
+        }
+    }
+
+    /**
+     * 执行流式对话，支持工具调用循环
+     */
+    private void doStreamChat(AgentDTO agent, List<LlmMessage> context, ChatMessage assistantMsg,
+                              SseEmitter emitter, long startTime, ChatSession session, Long sessionId) throws Exception {
+        AtomicReference<StringBuilder> contentRef = new AtomicReference<>(new StringBuilder());
+        AtomicBoolean inThinkBlock = new AtomicBoolean(false);
+        AtomicReference<List<LlmToolCall>> toolCallsRef = new AtomicReference<>();
+        AtomicBoolean hasToolCalls = new AtomicBoolean(false);
+        AtomicReference<LlmStreamChunk> lastChunkRef = new AtomicReference<>();
+
+        LlmChatRequest request = buildLlmChatRequest(agent, context);
+        llmGatewayApi.streamChat(agent.getModelId(), request, chunk -> {
+            try {
+                if (chunk.getError() != null && !chunk.getError().isEmpty()) {
+                    log.error("LLM 流式返回错误, sessionId={}, error={}", sessionId, chunk.getError());
+                    handleLlmError(assistantMsg, emitter, new RuntimeException(chunk.getError()));
+                    return;
+                }
+
+                if (chunk.getToolCalls() != null && !chunk.getToolCalls().isEmpty()) {
+                    toolCallsRef.set(chunk.getToolCalls());
+                }
+
+                String text = chunk.getContent();
+                if (text != null && !text.isEmpty()) {
+                    String filtered = filterStreamingThink(text, inThinkBlock);
+                    contentRef.get().append(text);
+                    if (filtered != null && !filtered.isEmpty()) {
+                        emitter.send(SseEmitter.event()
+                                .name("message")
+                                .data(Map.of("content", filtered, "timestamp", System.currentTimeMillis())));
+                    }
+                }
+
+                if (Boolean.TRUE.equals(chunk.getFinish())) {
+                    lastChunkRef.set(chunk);
+                    if ("tool_calls".equals(chunk.getFinishReason())) {
+                        hasToolCalls.set(true);
+                    } else {
+                        String fullContent = LlmOutputCleaner.stripThinking(contentRef.get().toString());
+                        finalizeAssistantMessage(assistantMsg, fullContent, chunk, startTime);
+                        updateSessionAfterChat(session, fullContent);
+                        cacheMessages(sessionId);
+                        sendDoneEvent(emitter, assistantMsg.getId());
+                    }
+                }
+            } catch (Exception e) {
+                log.error("SSE 发送失败, sessionId={}", sessionId, e);
+                emitter.completeWithError(e);
+            }
+        });
+
+        if (hasToolCalls.get() && toolCallsRef.get() != null) {
+            List<LlmToolCall> toolCalls = toolCallsRef.get();
+            emitter.send(SseEmitter.event()
+                    .name("tool_calling")
+                    .data(Map.of("tools", toolCalls.stream().map(LlmToolCall::getName).toList())));
+
+            for (LlmToolCall tc : toolCalls) {
+                String result = executeTool(tc, agent);
+                emitter.send(SseEmitter.event()
+                        .name("tool_result")
+                        .data(Map.of("tool", tc.getName(), "result", result)));
+                context.add(LlmMessage.tool(tc.getId(), tc.getName(), result));
+            }
+
+            contentRef.set(new StringBuilder());
+            inThinkBlock.set(false);
+            doStreamChat(agent, context, assistantMsg, emitter, startTime, session, sessionId);
+        }
+    }
+
+    private String buildFinalUserMessage(String message, String ragContext) {
         if (ragContext != null && !ragContext.isBlank()) {
-            finalUserMessage = """
+            return """
                     请严格根据以下参考信息回答问题。要求：
                     1. 优先使用参考信息中的原文内容，尽量完整呈现，不要概括或简化
                     2. 如果参考信息足够回答问题，不要添加你自己的知识
@@ -113,55 +199,8 @@ public class ChatMessageService {
 
                     用户问题：%s
                     """.formatted(ragContext, message);
-        } else {
-            finalUserMessage = message;
         }
-        context.add(LlmMessage.user(finalUserMessage));
-
-        // 创建 assistant 占位消息
-        ChatMessage assistantMsg = createAssistantPlaceholder(sessionId, userMsg.getSeq() + 1, agent.getModelId());
-
-        AtomicReference<StringBuilder> contentRef = new AtomicReference<>(new StringBuilder());
-        AtomicBoolean inThinkBlock = new AtomicBoolean(false);
-
-        try {
-            LlmChatRequest request = buildLlmChatRequest(agent, context);
-            llmGatewayApi.streamChat(agent.getModelId(), request, chunk -> {
-                try {
-                    // 优先处理错误
-                    if (chunk.getError() != null && !chunk.getError().isEmpty()) {
-                        log.error("LLM 流式返回错误, sessionId={}, error={}", sessionId, chunk.getError());
-                        handleLlmError(assistantMsg, emitter, new RuntimeException(chunk.getError()));
-                        return;
-                    }
-
-                    String text = chunk.getContent();
-                    if (text != null && !text.isEmpty()) {
-                        String filtered = filterStreamingThink(text, inThinkBlock);
-                        contentRef.get().append(text);
-                        if (filtered != null && !filtered.isEmpty()) {
-                            emitter.send(SseEmitter.event()
-                                    .name("message")
-                                    .data(Map.of("content", filtered, "timestamp", System.currentTimeMillis())));
-                        }
-                    }
-
-                    if (Boolean.TRUE.equals(chunk.getFinish())) {
-                        String fullContent = LlmOutputCleaner.stripThinking(contentRef.get().toString());
-                        finalizeAssistantMessage(assistantMsg, fullContent, chunk, startTime);
-                        updateSessionAfterChat(session, fullContent);
-                        cacheMessages(sessionId);
-                        sendDoneEvent(emitter, assistantMsg.getId());
-                    }
-                } catch (Exception e) {
-                    log.error("SSE 发送失败, sessionId={}", sessionId, e);
-                    emitter.completeWithError(e);
-                }
-            });
-        } catch (Exception e) {
-            log.error("LLM 调用失败, sessionId={}", sessionId, e);
-            handleLlmError(assistantMsg, emitter, e);
-        }
+        return message;
     }
 
     private AgentDTO getAgentOrThrow(Long agentId) {
@@ -233,7 +272,7 @@ public class ChatMessageService {
             context.add(LlmMessage.system(basePrompt));
         }
         for (ChatMessage msg : included) {
-            if ("user".equals(msg.getRole()) || "assistant".equals(msg.getRole())) {
+            if ("user".equals(msg.getRole()) || "assistant".equals(msg.getRole()) || "tool".equals(msg.getRole())) {
                 context.add(toLlmMessage(msg));
             }
         }
@@ -284,6 +323,24 @@ public class ChatMessageService {
     }
 
     private LlmMessage toLlmMessage(ChatMessage msg) {
+        if ("tool".equals(msg.getRole())) {
+            String toolCallId = null;
+            String name = null;
+            if (msg.getMetadata() != null && !msg.getMetadata().isEmpty()) {
+                try {
+                    Map<String, Object> meta = objectMapper.readValue(msg.getMetadata(), new TypeReference<>() {});
+                    toolCallId = meta.get("toolCallId") != null ? meta.get("toolCallId").toString() : null;
+                    name = meta.get("name") != null ? meta.get("name").toString() : null;
+                } catch (Exception e) {
+                    log.warn("Failed to parse tool metadata: {}", msg.getMetadata());
+                }
+            }
+            return LlmMessage.tool(
+                    toolCallId != null ? toolCallId : "placeholder",
+                    name != null ? name : "tool",
+                    msg.getContent() != null ? msg.getContent() : ""
+            );
+        }
         LlmMessage m = new LlmMessage();
         m.setRole(msg.getRole());
         m.setContent(msg.getContent() != null ? msg.getContent() : "");
@@ -342,13 +399,173 @@ public class ChatMessageService {
     }
 
     private LlmChatRequest buildLlmChatRequest(AgentDTO agent, List<LlmMessage> messages) {
+        List<LlmToolDefinition> tools = buildToolDefinitions(agent);
         return LlmChatRequest.builder()
                 .messages(messages)
+                .tools(tools)
+                .toolChoice(tools != null && !tools.isEmpty() ? "auto" : null)
                 .temperature(agent.getTemperature() != null ? agent.getTemperature().doubleValue() : 0.7)
                 .maxTokens(agent.getMaxTokens())
                 .stream(true)
                 .topP(agent.getTopP() != null ? agent.getTopP().doubleValue() : 1.0)
                 .build();
+    }
+
+    private List<LlmToolDefinition> buildToolDefinitions(AgentDTO agent) {
+        if (agent.getTools() == null || agent.getTools().isEmpty()) {
+            return null;
+        }
+        List<LlmToolDefinition> defs = new ArrayList<>();
+        for (AgentToolDTO tool : agent.getTools()) {
+            if (!Boolean.TRUE.equals(tool.getEnabled())) {
+                continue;
+            }
+            if ("workflow".equals(tool.getToolType())) {
+                LlmToolDefinition def = buildWorkflowToolDefinition(tool);
+                if (def != null) {
+                    defs.add(def);
+                }
+            }
+        }
+        return defs.isEmpty() ? null : defs;
+    }
+
+    private LlmToolDefinition buildWorkflowToolDefinition(AgentToolDTO tool) {
+        Long workflowId = parseWorkflowId(tool.getToolImpl());
+        if (workflowId == null) {
+            log.warn("Invalid workflowId in agentTool: toolImpl={}", tool.getToolImpl());
+            return null;
+        }
+        WorkflowDTO workflow = workflowApi.getById(workflowId);
+        if (workflow == null) {
+            log.warn("Workflow not found: workflowId={}", workflowId);
+            return null;
+        }
+        String toolName = tool.getToolName();
+        if (toolName == null || toolName.isEmpty()) {
+            toolName = workflow.getName();
+        }
+        toolName = sanitizeToolName(toolName);
+        String description = workflow.getDescription();
+        if (description == null || description.isEmpty()) {
+            description = "执行 " + workflow.getName() + " 工作流";
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> parameters = tool.getConfigJson() != null
+                ? (Map<String, Object>) tool.getConfigJson().get("parameters")
+                : null;
+        if (parameters == null) {
+            parameters = Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                            "input", Map.of(
+                                    "type", "string",
+                                    "description", "用户输入内容或需要传递给工作流的参数"
+                            )
+                    )
+            );
+        }
+        return LlmToolDefinition.builder()
+                .type("function")
+                .function(LlmToolDefinition.Function.builder()
+                        .name(toolName)
+                        .description(description)
+                        .parameters(parameters)
+                        .build())
+                .build();
+    }
+
+    private Long parseWorkflowId(String toolImpl) {
+        if (toolImpl == null || toolImpl.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(toolImpl);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private String sanitizeToolName(String name) {
+        if (name == null) {
+            return "workflow_tool";
+        }
+        String sanitized = name.replaceAll("[^a-zA-Z0-9_-]", "_");
+        if (sanitized.matches("^\\d.*")) {
+            sanitized = "wf_" + sanitized;
+        }
+        if (sanitized.length() > 64) {
+            sanitized = sanitized.substring(0, 64);
+        }
+        if (sanitized.isEmpty()) {
+            sanitized = "workflow_tool";
+        }
+        return sanitized;
+    }
+
+    private String executeTool(LlmToolCall toolCall, AgentDTO agent) {
+        String name = toolCall.getName();
+        String arguments = toolCall.getArguments();
+        AgentToolDTO matched = null;
+        for (AgentToolDTO tool : agent.getTools()) {
+            if (!Boolean.TRUE.equals(tool.getEnabled())) {
+                continue;
+            }
+            String expectedName = sanitizeToolName(tool.getToolName());
+            if (name.equals(expectedName)) {
+                matched = tool;
+                break;
+            }
+        }
+        if (matched == null) {
+            return "工具未找到: " + name;
+        }
+        if ("workflow".equals(matched.getToolType())) {
+            Long workflowId = parseWorkflowId(matched.getToolImpl());
+            if (workflowId == null) {
+                return "工作流 ID 无效";
+            }
+            Map<String, Object> inputs = new HashMap<>();
+            if (arguments != null && !arguments.isEmpty()) {
+                try {
+                    inputs = objectMapper.readValue(arguments, new TypeReference<>() {});
+                } catch (Exception e) {
+                    log.warn("Failed to parse tool arguments: {}", arguments);
+                    inputs.put("input", arguments);
+                }
+            }
+            return invokeWorkflowSync(workflowId, inputs);
+        }
+        return "不支持的工具类型: " + matched.getToolType();
+    }
+
+    private String invokeWorkflowSync(Long workflowId, Map<String, Object> inputs) {
+        WorkflowStartRequest request = new WorkflowStartRequest();
+        request.setWorkflowId(workflowId);
+        request.setInputs(inputs);
+        String instanceId = workflowApi.start(request);
+        if (instanceId == null || instanceId.isEmpty()) {
+            return "工作流启动失败";
+        }
+        for (int i = 0; i < WORKFLOW_MAX_POLL_ATTEMPTS; i++) {
+            try {
+                Thread.sleep(WORKFLOW_POLL_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return "工作流执行被中断";
+            }
+            WorkflowInstanceDTO instance = workflowApi.getInstanceById(Long.valueOf(instanceId));
+            if (instance == null) {
+                return "工作流实例不存在";
+            }
+            if ("completed".equals(instance.getStatus())) {
+                return instance.getContext() != null ? instance.getContext() : "工作流执行完成，无输出";
+            }
+            if ("failed".equals(instance.getStatus())) {
+                return "工作流执行失败: " + (instance.getErrorMsg() != null ? instance.getErrorMsg() : "未知错误");
+            }
+        }
+        return "工作流执行超时";
     }
 
     private void finalizeAssistantMessage(ChatMessage assistantMsg, String fullContent,
@@ -409,171 +626,7 @@ public class ChatMessageService {
         return vo;
     }
 
-    // ==================== Workflow 模式 ====================
-
-    /**
-     * workflow 模式对话：启动工作流并轮询结果
-     */
-    private void handleWorkflowChat(ChatSession session, AgentDTO agent, String message, SseEmitter emitter) {
-        try {
-            WorkflowStartRequest request = new WorkflowStartRequest();
-            request.setWorkflowId(agent.getWorkflowId());
-            request.setInputs(Map.of("userMessage", message, "sessionId", session.getId()));
-
-            String instanceId = workflowApi.start(request);
-            log.info("Workflow chat started: agentId={}, workflowId={}, instanceId={}",
-                    agent.getId(), agent.getWorkflowId(), instanceId);
-
-            emitter.send(SseEmitter.event()
-                    .name("workflow_started")
-                    .data(Map.of("instanceId", instanceId, "status", "RUNNING")));
-
-            pollWorkflowResult(instanceId, emitter, session);
-
-        } catch (Exception e) {
-            log.error("Workflow chat failed: sessionId={}, agentId={}", session.getId(), agent.getId(), e);
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("error")
-                        .data(Map.of("code", "WORKFLOW_ERROR", "message", e.getMessage())));
-                emitter.complete();
-            } catch (Exception ex) {
-                emitter.completeWithError(ex);
-            }
-        }
-    }
-
-    /**
-     * 轮询工作流实例状态，通过 SSE 推送结果
-     */
-    private void pollWorkflowResult(String instanceId, SseEmitter emitter, ChatSession session) {
-        java.util.concurrent.ScheduledExecutorService scheduler =
-                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
-                    Thread t = new Thread(r, "workflow-poll-" + instanceId);
-                    t.setDaemon(true);
-                    return t;
-                });
-
-        final int[] attempts = {0};
-
-        scheduler.scheduleWithFixedDelay(() -> {
-            try {
-                attempts[0]++;
-                WorkflowInstanceDTO instance = workflowApi.getInstanceById(Long.valueOf(instanceId));
-
-                if (instance == null) {
-                    emitter.send(SseEmitter.event()
-                            .name("error")
-                            .data(Map.of("code", "INSTANCE_NOT_FOUND", "message", "Workflow instance not found")));
-                    emitter.complete();
-                    scheduler.shutdown();
-                    return;
-                }
-
-                String status = instance.getStatus();
-                if ("COMPLETED".equals(status)) {
-                    String reply = extractWorkflowReply(instance.getContext());
-                    emitter.send(SseEmitter.event()
-                            .name("message")
-                            .data(Map.of("content", reply != null ? reply : "", "timestamp", System.currentTimeMillis())));
-                    emitter.send(SseEmitter.event()
-                            .name("done")
-                            .data(Map.of("status", "completed")));
-                    emitter.complete();
-                    scheduler.shutdown();
-                    saveWorkflowResult(session, reply, instanceId);
-                } else if ("FAILED".equals(status)) {
-                    String errorMsg = instance.getErrorMsg() != null ? instance.getErrorMsg() : "Workflow failed";
-                    emitter.send(SseEmitter.event()
-                            .name("error")
-                            .data(Map.of("code", "WORKFLOW_FAILED", "message", errorMsg)));
-                    emitter.complete();
-                    scheduler.shutdown();
-                    saveWorkflowResult(session, "Error: " + errorMsg, instanceId);
-                } else if (attempts[0] >= WORKFLOW_MAX_POLL_ATTEMPTS) {
-                    emitter.send(SseEmitter.event()
-                            .name("workflow_pending")
-                            .data(Map.of("instanceId", instanceId, "status", status,
-                                    "message", "Workflow is still running, please check later")));
-                    emitter.complete();
-                    scheduler.shutdown();
-                }
-            } catch (Exception e) {
-                log.error("Poll workflow error: instanceId={}", instanceId, e);
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("error")
-                            .data(Map.of("code", "POLL_ERROR", "message", e.getMessage())));
-                    emitter.complete();
-                } catch (Exception ex) {
-                    // ignore
-                }
-                scheduler.shutdown();
-            }
-        }, WORKFLOW_POLL_INTERVAL_MS, WORKFLOW_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * 从工作流上下文中提取最终回复
-     */
-    private String extractWorkflowReply(String contextJson) {
-        if (contextJson == null || contextJson.isBlank()) {
-            return null;
-        }
-        try {
-            Map<String, Object> context = objectMapper.readValue(contextJson, new TypeReference<>() {});
-            // 1. 先尝试旧格式的扁平 key（向后兼容）
-            Object reply = context.get("reply");
-            if (reply != null) {
-                return reply.toString();
-            }
-            Object llmResponse = context.get("llmResponse");
-            if (llmResponse != null) {
-                return llmResponse.toString();
-            }
-            // 2. 再尝试新格式的节点隔离 key（如 node_llm.llmResponse）
-            for (Map.Entry<String, Object> entry : context.entrySet()) {
-                String key = entry.getKey();
-                if (key.endsWith(".reply") || key.endsWith(".llmResponse")) {
-                    return entry.getValue().toString();
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            log.warn("Failed to extract workflow reply", e);
-            return null;
-        }
-    }
-
-    /**
-     * 保存工作流执行结果到消息表
-     */
-    private void saveWorkflowResult(ChatSession session, String content, String instanceId) {
-        try {
-            Integer maxSeq = chatMessageMapper.selectMaxSeqBySessionId(session.getId());
-            int nextSeq = (maxSeq == null ? 0 : maxSeq) + 1;
-
-            ChatMessage msg = new ChatMessage();
-            msg.setSessionId(session.getId());
-            msg.setSeq(nextSeq);
-            msg.setRole("assistant");
-            msg.setContent(content != null ? content : "");
-            msg.setStatus("completed");
-            msg.setModel("workflow:" + instanceId);
-            chatMessageMapper.insert(msg);
-
-            session.setMessageCount((session.getMessageCount() != null ? session.getMessageCount() : 0) + 2);
-            session.setLastMessageAt(LocalDateTime.now());
-            if ("新对话".equals(session.getTitle()) && content != null && !content.isBlank()) {
-                session.setTitle(content.substring(0, Math.min(20, content.length())));
-            }
-            chatSessionMapper.updateById(session);
-
-            cacheMessages(session.getId());
-        } catch (Exception e) {
-            log.error("Failed to save workflow result: sessionId={}", session.getId(), e);
-        }
-    }
+    // ==================== Workflow 工具执行 ====================
 
     /**
      * 流式分块 thinking 内容过滤

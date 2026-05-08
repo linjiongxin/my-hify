@@ -1,6 +1,7 @@
 package com.hify.agent.tool;
 
 import com.hify.workflow.api.WorkflowApi;
+import com.hify.workflow.api.dto.WorkflowInstanceDTO;
 import com.hify.workflow.api.dto.WorkflowStartRequest;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +59,54 @@ public class WorkflowTool {
         log.info("Workflow started successfully: instanceId={}", instanceId);
 
         return instanceId;
+    }
+
+    /**
+     * 同步调用工作流并等待结果
+     *
+     * @param workflowId 工作流 ID
+     * @param inputs     输入参数
+     * @return 工作流执行结果（上下文 JSON）
+     */
+    public String invokeSync(Long workflowId, Map<String, Object> inputs) {
+        log.info("Agent invoking workflow (sync): workflowId={}, inputs={}", workflowId, inputs);
+
+        String instanceId = invoke(workflowId, inputs);
+        if (instanceId == null || instanceId.isEmpty()) {
+            return "工作流启动失败";
+        }
+
+        long pollIntervalMs = 500;
+        int maxPolls = 60;
+        String status = null;
+
+        for (int i = 0; i < maxPolls; i++) {
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return "工作流执行被中断";
+            }
+
+            WorkflowInstanceDTO instance = workflowApi.getInstanceById(Long.valueOf(instanceId));
+            if (instance == null) {
+                return "工作流实例不存在";
+            }
+
+            status = instance.getStatus();
+            if ("completed".equals(status)) {
+                String context = instance.getContext();
+                log.info("Workflow completed: instanceId={}, context={}", instanceId, context);
+                return context != null ? context : "工作流执行完成，无输出";
+            }
+            if ("failed".equals(status)) {
+                log.warn("Workflow failed: instanceId={}, error={}", instanceId, instance.getErrorMsg());
+                return "工作流执行失败: " + (instance.getErrorMsg() != null ? instance.getErrorMsg() : "未知错误");
+            }
+        }
+
+        log.warn("Workflow poll timeout: instanceId={}, lastStatus={}", instanceId, status);
+        return "工作流执行超时，请稍后重试";
     }
 
     /**

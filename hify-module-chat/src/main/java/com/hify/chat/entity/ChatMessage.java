@@ -1,7 +1,9 @@
 package com.hify.chat.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.hify.common.web.entity.base.BaseEntity;
+import com.hify.common.web.handler.JsonbStringTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -68,5 +70,6 @@ public class ChatMessage extends BaseEntity {
     /**
      * 扩展元数据(JSONB)
      */
+    @TableField(typeHandler = JsonbStringTypeHandler.class)
     private String metadata;
 }

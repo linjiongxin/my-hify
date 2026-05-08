@@ -52,6 +52,7 @@ loadWorkflowOptions()
 const toolTypeOptions = [
   { label: '内置工具', value: 'builtin' },
   { label: 'MCP 工具', value: 'mcp' },
+  { label: '工作流', value: 'workflow' },
 ]
 
 function formatDateTime(val: unknown) {
