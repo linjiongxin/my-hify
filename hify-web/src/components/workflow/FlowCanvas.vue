@@ -2,7 +2,7 @@
 import { VueFlow, useVueFlow, type Node, type Edge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { nextTick, watch } from 'vue'
+import { nextTick, watch, onMounted, onUnmounted } from 'vue'
 import type { NodeType } from '@/api/workflow'
 import { NODE_TYPE_LABELS, NODE_TYPE_COLORS } from './types'
 
@@ -13,9 +13,39 @@ const edges = defineModel<Edge[]>('edges', { default: () => [] })
 
 const emit = defineEmits<{
   (e: 'nodeSelect', node: Node | null): void
+  (e: 'nodeDelete', nodeIds: string[]): void
 }>()
 
-const { addNodes, addEdges, setNodes, setEdges, fitView, onConnect, onNodeClick, onPaneClick, project, findNode } = useVueFlow({ id: FLOW_ID })
+const { addNodes, addEdges, removeNodes, setNodes, setEdges, fitView, onConnect, onNodeClick, onPaneClick, project, findNode, getSelectedNodes } = useVueFlow({ id: FLOW_ID })
+
+function deleteSelectedNodes() {
+  const selected = getSelectedNodes.value
+  if (!selected || selected.length === 0) return
+  const ids = selected.map(n => n.id)
+  removeNodes(ids)
+  emit('nodeDelete', ids)
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    // 如果正在输入框中，不删除
+    const target = event.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return
+    }
+    deleteSelectedNodes()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+})
+
+defineExpose({ deleteSelectedNodes })
 
 // 外部异步加载数据后，通过 v-model 替换数组时，Vue Flow 内部 store 不会自动同步
 // 需要监听变化并调用 setNodes/setEdges + fitView 才能正确渲染

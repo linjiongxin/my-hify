@@ -82,7 +82,7 @@ async function fetchApi(params: PageParams): Promise<PageResult<Workflow>> {
 }
 
 function handleAdd() {
-  dialogRef.value?.open({ status: 'draft' })
+  dialogRef.value?.open({ status: 'draft' }, false)
 }
 
 function handleEdit(row: Workflow) {

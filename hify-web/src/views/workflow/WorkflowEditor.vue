@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Node, Edge } from '@vue-flow/core'
-import { ArrowLeft, Check, CircleCheck } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, CircleCheck, Delete } from '@element-plus/icons-vue'
 import NodePalette from '@/components/workflow/NodePalette.vue'
 import FlowCanvas from '@/components/workflow/FlowCanvas.vue'
 import NodeConfigPanel from '@/components/workflow/NodeConfigPanel.vue'
@@ -28,9 +28,20 @@ const edges = ref<Edge[]>([])
 const selectedNode = ref<Node | null>(null)
 const loading = ref(false)
 const saving = ref(false)
+const canvasRef = ref<InstanceType<typeof FlowCanvas> | null>(null)
 
 function handleNodeSelect(node: Node | null) {
   selectedNode.value = node
+}
+
+function handleNodeDelete(nodeIds: string[]) {
+  if (selectedNode.value && nodeIds.includes(selectedNode.value.id)) {
+    selectedNode.value = null
+  }
+}
+
+function handleDeleteNode() {
+  canvasRef.value?.deleteSelectedNodes()
 }
 
 async function loadWorkflow() {
@@ -103,6 +114,7 @@ onMounted(() => {
         </div>
       </div>
       <div class="header-right">
+        <el-button :icon="Delete" :disabled="!selectedNode" @click="handleDeleteNode">删除节点</el-button>
         <el-button :icon="Check" :loading="saving" @click="handleSave">保存</el-button>
         <el-button :icon="CircleCheck" type="primary" @click="handlePublish">发布</el-button>
       </div>
@@ -111,7 +123,7 @@ onMounted(() => {
     <!-- 三栏主体 -->
     <div v-loading="loading" class="editor-body">
       <NodePalette />
-      <FlowCanvas v-model:nodes="nodes" v-model:edges="edges" @node-select="handleNodeSelect" />
+      <FlowCanvas ref="canvasRef" v-model:nodes="nodes" v-model:edges="edges" @node-select="handleNodeSelect" @node-delete="handleNodeDelete" />
       <NodeConfigPanel :selected-node="selectedNode" />
     </div>
   </div>
