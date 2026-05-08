@@ -12,6 +12,8 @@ export interface Agent {
   topP: number
   welcomeMessage?: string
   enabled: boolean
+  workflowId?: number
+  executionMode?: string
   createdAt: string
   updatedAt: string
 }
@@ -26,6 +28,8 @@ export interface AgentCreateRequest {
   topP?: number
   welcomeMessage?: string
   enabled?: boolean
+  workflowId?: number
+  executionMode?: string
 }
 
 export interface AgentUpdateRequest {
@@ -38,6 +42,8 @@ export interface AgentUpdateRequest {
   topP?: number
   welcomeMessage?: string
   enabled?: boolean
+  workflowId?: number
+  executionMode?: string
 }
 
 export interface ToolItem {

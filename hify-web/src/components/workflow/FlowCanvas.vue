@@ -2,7 +2,7 @@
 import { VueFlow, useVueFlow, type Node, type Edge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { nextTick } from 'vue'
+import { nextTick, watch } from 'vue'
 import type { NodeType } from '@/api/workflow'
 import { NODE_TYPE_LABELS, NODE_TYPE_COLORS } from './types'
 
@@ -15,7 +15,35 @@ const emit = defineEmits<{
   (e: 'nodeSelect', node: Node | null): void
 }>()
 
-const { addNodes, addEdges, onConnect, onNodeClick, onPaneClick, project, findNode } = useVueFlow({ id: FLOW_ID })
+const { addNodes, addEdges, setNodes, setEdges, fitView, onConnect, onNodeClick, onPaneClick, project, findNode } = useVueFlow({ id: FLOW_ID })
+
+// 外部异步加载数据后，通过 v-model 替换数组时，Vue Flow 内部 store 不会自动同步
+// 需要监听变化并调用 setNodes/setEdges + fitView 才能正确渲染
+// 通过比较 id 集合避免拖拽节点时的内部属性变化触发循环重置
+watch(nodes, (newNodes, oldNodes) => {
+  const newIds = new Set(newNodes.map(n => n.id))
+  const oldIds = oldNodes ? new Set(oldNodes.map(n => n.id)) : new Set()
+  if (newNodes.length > 0 && !setsEqual(newIds, oldIds)) {
+    setNodes(newNodes)
+    nextTick(() => fitView({ padding: 0.2 }))
+  }
+}, { deep: true })
+
+watch(edges, (newEdges, oldEdges) => {
+  const newIds = new Set(newEdges.map(e => e.id))
+  const oldIds = oldEdges ? new Set(oldEdges.map(e => e.id)) : new Set()
+  if (newEdges.length > 0 && !setsEqual(newIds, oldIds)) {
+    setEdges(newEdges)
+  }
+}, { deep: true })
+
+function setsEqual(a: Set<string>, b: Set<string>) {
+  if (a.size !== b.size) return false
+  for (const item of a) {
+    if (!b.has(item)) return false
+  }
+  return true
+}
 
 onConnect((connection) => {
   addEdges([{

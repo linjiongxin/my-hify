@@ -279,4 +279,55 @@ test.describe('工作流编排器 E2E 测试', () => {
     // 清理
     await deleteTestWorkflowByName(page, wfName)
   })
+
+  test('7. 保存后返回列表再重新编排 - 节点应正确加载', async ({ page }) => {
+    const wfName = `E2E_Reopen_${Date.now()}`
+    await loginAndNavigate(page, `${UI_BASE}/workflows`)
+
+    const wfId = await createTestWorkflowViaAPI(page, wfName)
+    await reloadAndWaitForWorkflowData(page, wfName)
+
+    // 第一次进入编排器
+    const row = page.locator(`.el-table__body tr:has-text("${wfName}")`)
+    await row.locator('button:has-text("编排")').click()
+    await page.waitForLoadState('networkidle')
+
+    // 等待编辑器加载完成
+    await expect(page.locator('.workflow-title .title-text')).not.toHaveText('加载中...', { timeout: 10000 })
+
+    // 拖拽两个节点到画布
+    await dragNodeToCanvas(page, 'LLM')
+    await dragNodeToCanvas(page, '条件分支')
+
+    // 验证画布上有 2 个节点
+    await expect(page.locator('.vue-flow__node')).toHaveCount(2)
+
+    // 保存
+    await page.click('button:has-text("保存")')
+    await page.waitForTimeout(1000)
+    await expect(page.locator('.el-message--success')).toContainText('保存成功')
+
+    // 点击返回按钮回到列表页
+    await page.click('button:has-text("返回")')
+    await page.waitForLoadState('networkidle')
+
+    // 验证回到列表页
+    await expect(page).toHaveURL(`${UI_BASE}/workflows`)
+    await expect(page.locator('h1.page-title')).toHaveText('工作流管理')
+
+    // 再次点击编排进入编辑器
+    const rowAgain = page.locator(`.el-table__body tr:has-text("${wfName}")`)
+    await rowAgain.locator('button:has-text("编排")').click()
+    await page.waitForLoadState('networkidle')
+
+    // 等待编辑器加载完成
+    await expect(page.locator('.workflow-title .title-text')).not.toHaveText('加载中...', { timeout: 10000 })
+    await page.waitForTimeout(800)
+
+    // 关键验证：画布上应该仍然有 2 个节点
+    await expect(page.locator('.vue-flow__node')).toHaveCount(2)
+
+    // 清理
+    await deleteTestWorkflowByName(page, wfName)
+  })
 })

@@ -27,15 +27,27 @@ import {
   type AgentKbBinding,
 } from '@/api/agent'
 import { getAllEnabledModels } from '@/api/model'
+import { getWorkflowPage } from '@/api/workflow'
 
 const modelOptions = ref<{ label: string; value: string }[]>([])
+const workflowOptions = ref<{ label: string; value: number }[]>([])
+const executionModeOptions = [
+  { label: 'ReAct 推理', value: 'react' },
+  { label: '工作流驱动', value: 'workflow' },
+]
 
 async function loadModelOptions() {
   const models = await getAllEnabledModels()
   modelOptions.value = models.map(m => ({ label: m.name, value: m.modelId }))
 }
 
+async function loadWorkflowOptions() {
+  const res = await getWorkflowPage({ current: 1, size: 100, status: 'published' })
+  workflowOptions.value = (res.records || []).map((w: any) => ({ label: w.name, value: w.id }))
+}
+
 loadModelOptions()
+loadWorkflowOptions()
 
 const toolTypeOptions = [
   { label: '内置工具', value: 'builtin' },
@@ -53,6 +65,7 @@ function formatDateTime(val: unknown) {
 const columns = [
   { prop: 'name', label: '名称', minWidth: 160 },
   { prop: 'modelId', label: '模型', width: 180, align: 'center' as const },
+  { prop: 'executionMode', label: '模式', width: 100, align: 'center' as const, formatter: (_row: any, _col: any, val: unknown) => val === 'workflow' ? '工作流' : 'ReAct' },
   { prop: 'description', label: '描述', minWidth: 200 },
   { prop: 'enabled', label: '状态', width: 90, align: 'center' as const, slot: 'status' },
   { prop: 'createdAt', label: '创建时间', width: 180, align: 'center' as const, formatter: (_row: any, _col: any, val: unknown) => formatDateTime(val) },
@@ -182,7 +195,7 @@ async function fetchApi(params: PageParams): Promise<PageResult<Agent>> {
 
 function handleAdd() {
   toolList.value = []
-  dialogRef.value?.open({ enabled: true, temperature: 0.7, maxTokens: 2048, topP: 1.0 }, false)
+  dialogRef.value?.open({ enabled: true, temperature: 0.7, maxTokens: 2048, topP: 1.0, executionMode: 'react' }, false)
 }
 
 async function handleEdit(row: Agent) {
@@ -194,6 +207,7 @@ async function handleEdit(row: Agent) {
   toolList.value = tools || []
   await loadKbOptions()
   await loadKbBindings(row.id)
+  await loadWorkflowOptions()
   dialogRef.value?.open({ ...detail, id: row.id })
 }
 
@@ -219,6 +233,8 @@ async function handleSubmit(data: Agent, _isEdit: boolean) {
     topP: data.topP,
     welcomeMessage: data.welcomeMessage,
     enabled: data.enabled,
+    executionMode: data.executionMode,
+    workflowId: data.executionMode === 'workflow' ? data.workflowId : undefined,
   }
   if (data.id != null) {
     await updateAgent(data.id, payload)
@@ -345,6 +361,28 @@ async function handleSaveTools() {
 
             <el-form-item label="欢迎语">
               <el-input v-model="form.welcomeMessage" type="textarea" placeholder="请输入欢迎语" :rows="2" />
+            </el-form-item>
+
+            <el-form-item label="执行模式">
+              <el-select v-model="form.executionMode" placeholder="请选择执行模式" style="width: 100%">
+                <el-option
+                  v-for="opt in executionModeOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item v-if="form.executionMode === 'workflow'" label="绑定工作流">
+              <el-select v-model="form.workflowId" placeholder="请选择工作流" style="width: 100%" clearable>
+                <el-option
+                  v-for="opt in workflowOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
             </el-form-item>
 
             <el-form-item label="状态">
