@@ -29,7 +29,7 @@ public class AgentKnowledgeBaseService implements AgentKnowledgeBaseApi {
     @Override
     @Transactional
     public void bind(AgentKbBindingDTO dto) {
-        // 检查是否已存在绑定
+        // 检查是否已存在未删除的绑定
         LambdaQueryWrapper<AgentKnowledgeBase> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AgentKnowledgeBase::getAgentId, dto.getAgentId())
                .eq(AgentKnowledgeBase::getKbId, dto.getKbId())
@@ -38,6 +38,19 @@ public class AgentKnowledgeBaseService implements AgentKnowledgeBaseApi {
         AgentKnowledgeBase existing = agentKnowledgeBaseMapper.selectOne(wrapper);
         if (existing != null) {
             throw new RuntimeException("该 Agent 已绑定此知识库");
+        }
+
+        // 检查是否存在已逻辑删除的记录，如果有则恢复
+        AgentKnowledgeBase deleted = agentKnowledgeBaseMapper.selectAllByAgentAndKb(
+                dto.getAgentId(), dto.getKbId());
+        if (deleted != null) {
+            agentKnowledgeBaseMapper.restoreById(
+                    deleted.getId(),
+                    dto.getTopK() != null ? dto.getTopK() : 10,
+                    dto.getSimilarityThreshold() != null
+                            ? dto.getSimilarityThreshold() : new java.math.BigDecimal("0.5"));
+            log.info("Agent {} restored binding to knowledge base {}", dto.getAgentId(), dto.getKbId());
+            return;
         }
 
         AgentKnowledgeBase binding = new AgentKnowledgeBase();
@@ -62,8 +75,7 @@ public class AgentKnowledgeBaseService implements AgentKnowledgeBaseApi {
 
         AgentKnowledgeBase binding = agentKnowledgeBaseMapper.selectOne(wrapper);
         if (binding != null) {
-            binding.setDeleted(true);
-            agentKnowledgeBaseMapper.updateById(binding);
+            agentKnowledgeBaseMapper.deleteById(binding.getId());
             log.info("Agent {} unbound from knowledge base {}", agentId, kbId);
         }
     }

@@ -1,5 +1,6 @@
 package com.hify.rag.controller;
 
+import com.hify.common.web.entity.Result;
 import com.hify.rag.api.AgentKnowledgeBaseApi;
 import com.hify.rag.dto.AgentKbBindingDTO;
 import com.hify.rag.vo.AgentKnowledgeBaseVO;
@@ -21,28 +22,31 @@ public class AgentKbBindingController {
     private final AgentKnowledgeBaseApi agentKnowledgeBaseApi;
 
     @PostMapping("/bind")
-    public void bind(@RequestBody AgentKbBindingDTO dto) {
+    public Result<Void> bind(@RequestBody AgentKbBindingDTO dto) {
         log.info("绑定 Agent {} 到知识库 {}", dto.getAgentId(), dto.getKbId());
         agentKnowledgeBaseApi.bind(dto);
+        return Result.success();
     }
 
     @DeleteMapping("/unbind")
-    public void unbind(@RequestParam("agentId") Long agentId, @RequestParam("kbId") Long kbId) {
+    public Result<Void> unbind(@RequestParam("agentId") Long agentId, @RequestParam("kbId") Long kbId) {
         log.info("解绑 Agent {} 从知识库 {}", agentId, kbId);
         agentKnowledgeBaseApi.unbind(agentId, kbId);
+        return Result.success();
     }
 
     @GetMapping("/agent/{agentId}")
-    public List<AgentKnowledgeBaseVO> getByAgentId(@PathVariable("agentId") Long agentId) {
-        return agentKnowledgeBaseApi.getByAgentId(agentId);
+    public Result<List<AgentKnowledgeBaseVO>> getByAgentId(@PathVariable("agentId") Long agentId) {
+        return Result.success(agentKnowledgeBaseApi.getByAgentId(agentId));
     }
 
     @PutMapping("/update")
-    public void updateBinding(@RequestParam("agentId") Long agentId,
+    public Result<Void> updateBinding(@RequestParam("agentId") Long agentId,
                               @RequestParam("kbId") Long kbId,
                               @RequestParam(value = "topK", required = false) Integer topK,
                               @RequestParam(value = "similarityThreshold", required = false) java.math.BigDecimal similarityThreshold) {
         log.info("更新 Agent {} 知识库 {} 绑定配置", agentId, kbId);
         agentKnowledgeBaseApi.updateBinding(agentId, kbId, topK, similarityThreshold);
+        return Result.success();
     }
 }
