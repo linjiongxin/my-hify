@@ -10,7 +10,9 @@ public sealed interface NodeConfig permits
         LlmNodeConfig,
         ToolNodeConfig,
         ConditionNodeConfig,
-        ApprovalNodeConfig {
+        ApprovalNodeConfig,
+        ApiCallNodeConfig,
+        KnowledgeNodeConfig {
 
     /**
      * 错误分支跳转目标（可选，所有节点通用）

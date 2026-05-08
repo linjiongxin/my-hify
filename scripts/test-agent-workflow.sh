@@ -52,7 +52,7 @@ curl -s -X PUT "${BASE_URL}/workflow/${WORKFLOW_ID}/nodes" \
   -H "Content-Type: application/json" \
   -d '[
     {"nodeId":"node_start","type":"START","name":"开始","config":"{}","positionX":100,"positionY":100},
-    {"nodeId":"node_llm","type":"LLM","name":"生成回复","config":"{\"model\":\"MiniMax-M2.7\",\"prompt\":\"用户说：${userMessage}，请友好回复\",\"outputVar\":\"llmResponse\"}","positionX":300,"positionY":100},
+    {"nodeId":"node_llm","type":"LLM","name":"生成回复","config":"{\"model\":\"MiniMax-M2.7\",\"prompt\":\"用户说：{{start.userMessage}}，请友好回复\",\"outputVar\":\"llmResponse\"}","positionX":300,"positionY":100},
     {"nodeId":"node_end","type":"END","name":"结束","config":"{}","positionX":500,"positionY":100}
   ]' | jq -r '. | length'
 

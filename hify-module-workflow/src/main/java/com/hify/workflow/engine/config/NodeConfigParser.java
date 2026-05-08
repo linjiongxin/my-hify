@@ -39,6 +39,8 @@ public class NodeConfigParser {
                 case "TOOL" -> objectMapper.readValue(configJson, ToolNodeConfig.class);
                 case "CONDITION" -> objectMapper.readValue(configJson, ConditionNodeConfig.class);
                 case "APPROVAL" -> objectMapper.readValue(configJson, ApprovalNodeConfig.class);
+                case "API_CALL" -> objectMapper.readValue(configJson, ApiCallNodeConfig.class);
+                case "KNOWLEDGE" -> objectMapper.readValue(configJson, KnowledgeNodeConfig.class);
                 default -> throw new IllegalArgumentException("Unknown node type: " + type);
             };
         } catch (JsonProcessingException e) {

@@ -2,12 +2,14 @@ package com.hify.workflow.engine;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.hify.workflow.engine.config.NodeConfigParser;
+import com.hify.workflow.engine.context.ExecutionContext;
+import com.hify.workflow.engine.executor.NodeExecutor;
+import com.hify.workflow.engine.executor.NodeExecutorRegistry;
 import com.hify.workflow.entity.WorkflowEdge;
 import com.hify.workflow.entity.WorkflowInstance;
 import com.hify.workflow.entity.WorkflowNode;
 import com.hify.workflow.mapper.WorkflowEdgeMapper;
 import com.hify.workflow.engine.config.ApprovalNodeConfig;
-import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.mapper.WorkflowInstanceMapper;
 import com.hify.workflow.mapper.WorkflowMapper;
 import com.hify.workflow.mapper.WorkflowNodeMapper;
@@ -46,7 +48,7 @@ class WorkflowEngineTest {
     private WorkflowInstanceMapper workflowInstanceMapper;
 
     @Mock
-    private NodeExecutorFactory nodeExecutorFactory;
+    private NodeExecutorRegistry nodeExecutorRegistry;
 
     @Mock
     private NodeConfigParser nodeConfigParser;
@@ -63,7 +65,7 @@ class WorkflowEngineTest {
         ReflectionTestUtils.setField(workflowEngine, "workflowNodeMapper", workflowNodeMapper);
         ReflectionTestUtils.setField(workflowEngine, "workflowEdgeMapper", workflowEdgeMapper);
         ReflectionTestUtils.setField(workflowEngine, "workflowInstanceMapper", workflowInstanceMapper);
-        ReflectionTestUtils.setField(workflowEngine, "nodeExecutorFactory", nodeExecutorFactory);
+        ReflectionTestUtils.setField(workflowEngine, "nodeExecutorRegistry", nodeExecutorRegistry);
         ReflectionTestUtils.setField(workflowEngine, "nodeConfigParser", nodeConfigParser);
         ReflectionTestUtils.setField(workflowEngine, "nodeExecutionRecorder", nodeExecutionRecorder);
         ReflectionTestUtils.setField(workflowEngine, "objectMapper", new ObjectMapper());
@@ -239,8 +241,8 @@ class WorkflowEngineTest {
         when(nodeExecutionRecorder.recordStart(any(), any(), any())).thenReturn(1L);
 
         NodeExecutor mockExecutor = mock(NodeExecutor.class);
-        when(mockExecutor.execute(any(), any())).thenReturn(NodeResult.success(null));
-        when(nodeExecutorFactory.getExecutor("LLM")).thenReturn(mockExecutor);
+        when(mockExecutor.execute(any(), any(), any())).thenReturn(NodeResult.success(null));
+        when(nodeExecutorRegistry.get("LLM")).thenReturn(mockExecutor);
 
         // When: 直接执行节点（不 mock executeAsync）
         workflowEngine.executeAsync(100L, "node_llm");
@@ -277,8 +279,8 @@ class WorkflowEngineTest {
         when(nodeExecutionRecorder.recordStart(any(), any(), any())).thenReturn(1L);
 
         NodeExecutor mockExecutor = mock(NodeExecutor.class);
-        when(mockExecutor.execute(any(), any())).thenReturn(NodeResult.failure("LLM timeout"));
-        when(nodeExecutorFactory.getExecutor("LLM")).thenReturn(mockExecutor);
+        when(mockExecutor.execute(any(), any(), any())).thenReturn(NodeResult.failure("LLM timeout"));
+        when(nodeExecutorRegistry.get("LLM")).thenReturn(mockExecutor);
 
         // When
         workflowEngine.executeAsync(100L, "node_llm");
@@ -459,8 +461,8 @@ class WorkflowEngineTest {
         when(nodeExecutionRecorder.recordStart(any(), any(), any())).thenReturn(1L);
 
         NodeExecutor mockExecutor = mock(NodeExecutor.class);
-        when(mockExecutor.execute(any(), any())).thenReturn(NodeResult.success(null));
-        when(nodeExecutorFactory.getExecutor("LLM")).thenReturn(mockExecutor);
+        when(mockExecutor.execute(any(), any(), any())).thenReturn(NodeResult.success(null));
+        when(nodeExecutorRegistry.get("LLM")).thenReturn(mockExecutor);
 
         // When
         workflowEngine.executeAsync(100L, "node_a");

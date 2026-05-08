@@ -329,6 +329,34 @@ GET /api/workflow/instance/{instanceId}/pending-approvals
 
 > `approveBranch` / `rejectBranch` 为可选字段。未配置时，审批完成后走默认连线。
 
+### API_CALL
+```json
+{
+  "url": "https://api.example.com/orders/${orderId}",
+  "method": "GET",
+  "headers": {
+    "Authorization": "Bearer ${token}"
+  },
+  "body": "{\"status\":\"refunded\"}",
+  "outputVar": "apiResponse"
+}
+```
+
+> `method` 支持 `GET` / `POST` / `PUT` / `DELETE`。URL、headers、body 中的 `{{nodeKey.varName}}` 占位符会被 ExecutionContext 解析替换。
+
+### KNOWLEDGE
+```json
+{
+  "knowledgeBaseId": 1,
+  "query": "{{start.userMessage}}",
+  "topK": 5,
+  "threshold": 0.7,
+  "outputVar": "knowledgeResult"
+}
+```
+
+> `topK` 默认 5，`threshold` 默认 0.7。查询结果按 `[1] content...\n[2] content...` 格式拼接后写入上下文。
+
 ---
 
 ## 条件连线

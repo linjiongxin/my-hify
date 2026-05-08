@@ -5,8 +5,10 @@ import com.hify.workflow.config.RetryConfig;
 import com.hify.workflow.engine.config.ApprovalNodeConfig;
 import com.hify.workflow.engine.config.NodeConfig;
 import com.hify.workflow.engine.config.NodeConfigParser;
-import com.hify.workflow.engine.util.PlaceholderUtils;
 import com.hify.workflow.engine.context.ExecutionContext;
+import com.hify.workflow.engine.executor.NodeExecutor;
+import com.hify.workflow.engine.executor.NodeExecutorRegistry;
+import com.hify.workflow.engine.util.PlaceholderUtils;
 import com.hify.workflow.entity.*;
 import com.hify.workflow.mapper.*;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -54,7 +56,7 @@ public class WorkflowEngine {
     private WorkflowNodeExecutionMapper workflowNodeExecutionMapper;
 
     @Autowired
-    private NodeExecutorFactory nodeExecutorFactory;
+    private NodeExecutorRegistry nodeExecutorRegistry;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -185,17 +187,26 @@ public class WorkflowEngine {
         markNodeVisited(context, nodeId);
         saveContext(instance, context);
 
+        // 解析节点配置
+        NodeConfig config;
+        try {
+            config = nodeConfigParser.parse(node);
+        } catch (Exception e) {
+            handleFailure(node, instance, "Failed to parse node config: " + e.getMessage());
+            return;
+        }
+
         // 获取节点执行器
         NodeExecutor executor;
         try {
-            executor = nodeExecutorFactory.getExecutor(node.getType());
+            executor = nodeExecutorRegistry.get(node.getType());
         } catch (Exception e) {
             handleFailure(node, instance, "Unknown node type: " + node.getType());
             return;
         }
 
         // 执行节点（带重试）
-        NodeResult result = executeWithRetry(node, context, executor, instance);
+        NodeResult result = executeWithRetry(node, config, context, executor, instance);
 
         // 处理执行结果
         if (result.isRequiresApproval()) {
@@ -229,7 +240,7 @@ public class WorkflowEngine {
     /**
      * 带重试执行节点
      */
-    private NodeResult executeWithRetry(WorkflowNode node, ExecutionContext context,
+    private NodeResult executeWithRetry(WorkflowNode node, NodeConfig config, ExecutionContext context,
                                         NodeExecutor executor, WorkflowInstance instance) {
         Long recordId = nodeExecutionRecorder.recordStart(instance.getId(), node, node.getConfig());
         RetryConfig retryConfig = getRetryConfig(node, instance);
@@ -237,7 +248,7 @@ public class WorkflowEngine {
         int attempt = 0;
         while (attempt <= retryConfig.getMaxRetries()) {
             try {
-                NodeResult result = executor.execute(node, context);
+                NodeResult result = executor.execute(node, config, context);
 
                 // 保存上下文
                 saveContext(instance, context);
