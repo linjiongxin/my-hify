@@ -19,6 +19,7 @@ import com.hify.common.core.exception.BizException;
 import com.hify.common.core.util.LlmOutputCleaner;
 import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
+import com.hify.model.api.dto.LlmChatResponse;
 import com.hify.model.api.dto.LlmMessage;
 import com.hify.model.api.dto.LlmStreamChunk;
 import com.hify.model.api.dto.LlmToolCall;
@@ -105,10 +106,74 @@ public class ChatMessageService {
         ChatMessage assistantMsg = createAssistantPlaceholder(sessionId, userMsg.getSeq() + 1, agent.getModelId());
 
         try {
-            doStreamChat(agent, context, assistantMsg, emitter, startTime, session, sessionId);
+            LlmChatRequest request = buildLlmChatRequest(agent, context);
+            // 如果存在工具，先非流式探测一轮，规避部分模型流式+工具的兼容性问题（如 MiniMax CANCEL）
+            if (request.getTools() != null && !request.getTools().isEmpty()) {
+                handleChatWithTools(agent, context, assistantMsg, emitter, startTime, session, sessionId, request);
+            } else {
+                doStreamChat(agent, context, assistantMsg, emitter, startTime, session, sessionId);
+            }
         } catch (Exception e) {
             log.error("LLM 调用失败, sessionId={}", sessionId, e);
             handleLlmError(assistantMsg, emitter, e);
+        }
+    }
+
+    /**
+     * 处理带工具的对话：先非流式探测 tool_calls，再流式生成最终回复
+     */
+    private void handleChatWithTools(AgentDTO agent, List<LlmMessage> context, ChatMessage assistantMsg,
+                                     SseEmitter emitter, long startTime, ChatSession session, Long sessionId,
+                                     LlmChatRequest request) throws Exception {
+        LlmChatResponse probe = llmGatewayApi.chat(agent.getModelId(), request);
+
+        if (probe.getToolCalls() != null && !probe.getToolCalls().isEmpty()) {
+            List<LlmToolCall> toolCalls = probe.getToolCalls();
+            emitter.send(SseEmitter.event()
+                    .name("tool_calling")
+                    .data(Map.of("tools", toolCalls.stream().map(LlmToolCall::getName).toList())));
+
+            // 必须先添加 assistant 的 tool_calls 消息，再添加 tool 结果，否则 API 会报 tool_call_id 找不到
+            context.add(LlmMessage.assistantWithToolCalls(toolCalls));
+
+            for (LlmToolCall tc : toolCalls) {
+                String result = executeTool(tc, agent);
+                emitter.send(SseEmitter.event()
+                        .name("tool_result")
+                        .data(Map.of("tool", tc.getName(), "result", result)));
+                context.add(LlmMessage.tool(tc.getId(), tc.getName(), result));
+            }
+
+            // 第二轮生成最终回复（非流式，规避部分模型流式+tool上下文的兼容性问题）
+            LlmChatRequest finalRequest = buildLlmChatRequest(agent, context, true);
+            finalRequest.setStream(false);
+            LlmChatResponse finalResponse = llmGatewayApi.chat(agent.getModelId(), finalRequest);
+            String finalContent = finalResponse.getContent() != null ? finalResponse.getContent() : "";
+            String cleaned = LlmOutputCleaner.stripThinking(finalContent);
+            if (!cleaned.isEmpty()) {
+                emitter.send(SseEmitter.event()
+                        .name("message")
+                        .data(Map.of("content", cleaned, "timestamp", System.currentTimeMillis())));
+            }
+            finalizeAssistantMessage(assistantMsg, cleaned,
+                    LlmStreamChunk.builder().finish(true).finishReason("stop").build(), startTime);
+            updateSessionAfterChat(session, cleaned);
+            cacheMessages(sessionId);
+            sendDoneEvent(emitter, assistantMsg.getId());
+        } else {
+            // 无需调用工具，直接返回非流式结果并模拟流式推送
+            String content = probe.getContent() != null ? probe.getContent() : "";
+            String cleaned = LlmOutputCleaner.stripThinking(content);
+            if (!cleaned.isEmpty()) {
+                emitter.send(SseEmitter.event()
+                        .name("message")
+                        .data(Map.of("content", cleaned, "timestamp", System.currentTimeMillis())));
+            }
+            finalizeAssistantMessage(assistantMsg, cleaned,
+                    LlmStreamChunk.builder().finish(true).finishReason("stop").build(), startTime);
+            updateSessionAfterChat(session, cleaned);
+            cacheMessages(sessionId);
+            sendDoneEvent(emitter, assistantMsg.getId());
         }
     }
 
@@ -117,13 +182,19 @@ public class ChatMessageService {
      */
     private void doStreamChat(AgentDTO agent, List<LlmMessage> context, ChatMessage assistantMsg,
                               SseEmitter emitter, long startTime, ChatSession session, Long sessionId) throws Exception {
+        doStreamChat(agent, context, assistantMsg, emitter, startTime, session, sessionId, false);
+    }
+
+    private void doStreamChat(AgentDTO agent, List<LlmMessage> context, ChatMessage assistantMsg,
+                              SseEmitter emitter, long startTime, ChatSession session, Long sessionId,
+                              boolean skipTools) throws Exception {
         AtomicReference<StringBuilder> contentRef = new AtomicReference<>(new StringBuilder());
         AtomicBoolean inThinkBlock = new AtomicBoolean(false);
         AtomicReference<List<LlmToolCall>> toolCallsRef = new AtomicReference<>();
         AtomicBoolean hasToolCalls = new AtomicBoolean(false);
         AtomicReference<LlmStreamChunk> lastChunkRef = new AtomicReference<>();
 
-        LlmChatRequest request = buildLlmChatRequest(agent, context);
+        LlmChatRequest request = buildLlmChatRequest(agent, context, skipTools);
         llmGatewayApi.streamChat(agent.getModelId(), request, chunk -> {
             try {
                 if (chunk.getError() != null && !chunk.getError().isEmpty()) {
@@ -170,6 +241,9 @@ public class ChatMessageService {
             emitter.send(SseEmitter.event()
                     .name("tool_calling")
                     .data(Map.of("tools", toolCalls.stream().map(LlmToolCall::getName).toList())));
+
+            // 必须先添加 assistant 的 tool_calls 消息，再添加 tool 结果
+            context.add(LlmMessage.assistantWithToolCalls(toolCalls));
 
             for (LlmToolCall tc : toolCalls) {
                 String result = executeTool(tc, agent);
@@ -245,7 +319,10 @@ public class ChatMessageService {
         List<LlmMessage> context = new ArrayList<>();
 
         String basePrompt = agent.getSystemPrompt();
-        int basePromptTokens = estimateTokens(basePrompt);
+        String toolGuidance = buildToolGuidance(agent);
+        String systemPrompt = buildSystemPrompt(basePrompt, toolGuidance);
+
+        int basePromptTokens = estimateTokens(systemPrompt);
         int ragTokens = estimateTokens(ragContext);
         int userQueryTokens = estimateTokens(userQuery);
         int overheadTokens = estimateTokens("参考以下信息回答问题：\n\n<参考信息>\n</参考信息>\n\n用户问题：");
@@ -268,8 +345,8 @@ public class ChatMessageService {
         }
         Collections.reverse(included); // 恢复正序
 
-        if (basePrompt != null && !basePrompt.isBlank()) {
-            context.add(LlmMessage.system(basePrompt));
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            context.add(LlmMessage.system(systemPrompt));
         }
         for (ChatMessage msg : included) {
             if ("user".equals(msg.getRole()) || "assistant".equals(msg.getRole()) || "tool".equals(msg.getRole())) {
@@ -277,6 +354,55 @@ public class ChatMessageService {
             }
         }
         return context;
+    }
+
+    /**
+     * 组装最终系统提示词：基础提示 + 工具使用指引
+     */
+    private String buildSystemPrompt(String basePrompt, String toolGuidance) {
+        if (toolGuidance == null || toolGuidance.isEmpty()) {
+            return basePrompt;
+        }
+        if (basePrompt == null || basePrompt.isBlank()) {
+            return toolGuidance;
+        }
+        return basePrompt + "\n\n" + toolGuidance;
+    }
+
+    /**
+     * 根据 Agent 绑定的工具生成使用指引，帮助 LLM 自主决策何时调用工具
+     */
+    private String buildToolGuidance(AgentDTO agent) {
+        if (agent.getTools() == null || agent.getTools().isEmpty()) {
+            return null;
+        }
+        List<AgentToolDTO> enabledTools = agent.getTools().stream()
+                .filter(t -> Boolean.TRUE.equals(t.getEnabled()))
+                .toList();
+        if (enabledTools.isEmpty()) {
+            return null;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("【工具使用指引】\n你拥有以下工具可以帮助用户，请根据用户意图自主判断是否使用：\n");
+        for (AgentToolDTO tool : enabledTools) {
+            if ("workflow".equals(tool.getToolType())) {
+                sb.append("- ").append(tool.getToolName());
+                Long workflowId = parseWorkflowId(tool.getToolImpl());
+                if (workflowId != null) {
+                    WorkflowDTO wf = workflowApi.getById(workflowId);
+                    if (wf != null && wf.getDescription() != null && !wf.getDescription().isEmpty()) {
+                        sb.append("：").append(wf.getDescription());
+                    }
+                }
+                sb.append("\n");
+            }
+        }
+        sb.append("\n使用规则：\n");
+        sb.append("1. 仅在必要时调用工具，能直接回答的问题不要调用\n");
+        sb.append("2. 调用工具时必须准确提供工具所需的参数\n");
+        sb.append("3. 工具返回结果后，请用自然语言向用户解释结果");
+        return sb.toString();
     }
 
     /**
@@ -399,10 +525,15 @@ public class ChatMessageService {
     }
 
     private LlmChatRequest buildLlmChatRequest(AgentDTO agent, List<LlmMessage> messages) {
-        List<LlmToolDefinition> tools = buildToolDefinitions(agent);
+        return buildLlmChatRequest(agent, messages, false);
+    }
+
+    private LlmChatRequest buildLlmChatRequest(AgentDTO agent, List<LlmMessage> messages, boolean skipTools) {
+        List<LlmToolDefinition> tools = skipTools ? null : buildToolDefinitions(agent);
         return LlmChatRequest.builder()
                 .messages(messages)
                 .tools(tools)
+                // 显式指定 tool_choice: auto，引导模型在需要时调用工具
                 .toolChoice(tools != null && !tools.isEmpty() ? "auto" : null)
                 .temperature(agent.getTemperature() != null ? agent.getTemperature().doubleValue() : 0.7)
                 .maxTokens(agent.getMaxTokens())
@@ -446,24 +577,16 @@ public class ChatMessageService {
             toolName = workflow.getName();
         }
         toolName = sanitizeToolName(toolName);
-        String description = workflow.getDescription();
-        if (description == null || description.isEmpty()) {
-            description = "执行 " + workflow.getName() + " 工作流";
-        }
+
+        // 生成详细描述：包含工作流用途和预期输入参数
+        String description = buildWorkflowToolDescription(workflow, tool);
+
         @SuppressWarnings("unchecked")
         Map<String, Object> parameters = tool.getConfigJson() != null
                 ? (Map<String, Object>) tool.getConfigJson().get("parameters")
                 : null;
         if (parameters == null) {
-            parameters = Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "input", Map.of(
-                                    "type", "string",
-                                    "description", "用户输入内容或需要传递给工作流的参数"
-                            )
-                    )
-            );
+            parameters = buildParametersFromWorkflowNodes(workflowId);
         }
         return LlmToolDefinition.builder()
                 .type("function")
@@ -473,6 +596,129 @@ public class ChatMessageService {
                         .parameters(parameters)
                         .build())
                 .build();
+    }
+
+    /**
+     * 根据工作流节点配置提取输入参数 JSON Schema
+     */
+    private Map<String, Object> buildParametersFromWorkflowNodes(Long workflowId) {
+        try {
+            List<com.hify.workflow.api.dto.WorkflowNodeDTO> nodes = workflowApi.getNodes(workflowId);
+            if (nodes == null || nodes.isEmpty()) {
+                return defaultParameters();
+            }
+
+            // 提取所有 ${var} 和 {{var}} 占位符中的变量名
+            java.util.Set<String> varNames = new java.util.LinkedHashSet<>();
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{([^}]+)}");
+            java.util.regex.Pattern pattern2 = java.util.regex.Pattern.compile("\\{\\{([^}]+)}}");
+            for (com.hify.workflow.api.dto.WorkflowNodeDTO node : nodes) {
+                if (node.getConfig() == null || node.getConfig().isEmpty()) {
+                    continue;
+                }
+                java.util.regex.Matcher matcher = pattern.matcher(node.getConfig());
+                while (matcher.find()) {
+                    String varName = matcher.group(1).trim();
+                    // 排除内置变量和数字索引
+                    if (!varName.isEmpty() && !varName.matches("\\d+") && !varName.startsWith("__")) {
+                        varNames.add(varName);
+                    }
+                }
+                java.util.regex.Matcher matcher2 = pattern2.matcher(node.getConfig());
+                while (matcher2.find()) {
+                    String varName = matcher2.group(1).trim();
+                    if (!varName.isEmpty() && !varName.matches("\\d+") && !varName.startsWith("__")) {
+                        // 对于 {{node.var}} 格式，取变量部分
+                        if (varName.contains(".")) {
+                            varName = varName.substring(varName.lastIndexOf('.') + 1);
+                        }
+                        varNames.add(varName);
+                    }
+                }
+            }
+
+            if (varNames.isEmpty()) {
+                return defaultParameters();
+            }
+
+            Map<String, Object> properties = new HashMap<>();
+            for (String varName : varNames) {
+                properties.put(varName, Map.of(
+                        "type", "string",
+                        "description", "工作流变量: " + varName
+                ));
+            }
+            return Map.of(
+                    "type", "object",
+                    "properties", properties,
+                    "required", new java.util.ArrayList<>(varNames)
+            );
+        } catch (Exception e) {
+            log.warn("Failed to extract parameters from workflow nodes: workflowId={}", workflowId, e);
+            return defaultParameters();
+        }
+    }
+
+    private Map<String, Object> defaultParameters() {
+        return Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "input", Map.of(
+                                "type", "string",
+                                "description", "用户输入内容或需要传递给工作流的参数"
+                        )
+                )
+        );
+    }
+
+    /**
+     * 构建工作流工具的详细描述，帮助 LLM 理解何时调用该工具
+     */
+    private String buildWorkflowToolDescription(WorkflowDTO workflow, AgentToolDTO tool) {
+        String baseDesc = workflow.getDescription();
+        if (baseDesc == null || baseDesc.isEmpty() || baseDesc.length() < 3) {
+            baseDesc = "执行 " + workflow.getName() + " 工作流";
+        }
+        StringBuilder sb = new StringBuilder(baseDesc);
+
+        // 尝试提取参数信息补充到描述中
+        try {
+            List<com.hify.workflow.api.dto.WorkflowNodeDTO> nodes = workflowApi.getNodes(workflow.getId());
+            if (nodes != null && !nodes.isEmpty()) {
+                java.util.Set<String> varNames = new java.util.LinkedHashSet<>();
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{([^}]+)}");
+                java.util.regex.Pattern pattern2 = java.util.regex.Pattern.compile("\\{\\{([^}]+)}}");
+                for (com.hify.workflow.api.dto.WorkflowNodeDTO node : nodes) {
+                    if (node.getConfig() == null || node.getConfig().isEmpty()) {
+                        continue;
+                    }
+                    java.util.regex.Matcher matcher = pattern.matcher(node.getConfig());
+                    while (matcher.find()) {
+                        String varName = matcher.group(1).trim();
+                        if (!varName.isEmpty() && !varName.matches("\\d+") && !varName.startsWith("__")) {
+                            varNames.add(varName);
+                        }
+                    }
+                    java.util.regex.Matcher matcher2 = pattern2.matcher(node.getConfig());
+                    while (matcher2.find()) {
+                        String varName = matcher2.group(1).trim();
+                        if (!varName.isEmpty() && !varName.matches("\\d+") && !varName.startsWith("__")) {
+                            if (varName.contains(".")) {
+                                varName = varName.substring(varName.lastIndexOf('.') + 1);
+                            }
+                            varNames.add(varName);
+                        }
+                    }
+                }
+                if (!varNames.isEmpty()) {
+                    sb.append("\n调用此工具时需要提供以下参数: ")
+                      .append(String.join(", ", varNames));
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to enrich tool description: workflowId={}", workflow.getId());
+        }
+        return sb.toString();
     }
 
     private Long parseWorkflowId(String toolImpl) {

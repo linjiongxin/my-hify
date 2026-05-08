@@ -139,4 +139,31 @@ class OpenAiSseEventListenerTest {
         assertThat(chunks.get(0).getContent()).isEqualTo("test");
         assertThat(chunks.get(0).getFinish()).isFalse();
     }
+
+    @Test
+    void shouldAccumulateToolCalls_whenOnEvent_givenIncrementalToolCallChunks() {
+        // Chunk 1: tool call id and name
+        listener.onEvent(eventSource, "1", "message",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_abc\",\"type\":\"function\",\"function\":{\"name\":\"query_order\",\"arguments\":\"\"}}]}}]}");
+
+        // Chunk 2: partial arguments
+        listener.onEvent(eventSource, "2", "message",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"order_id\\\":\\\"dt\"}}]}}]}");
+
+        // Chunk 3: remaining arguments + finish
+        listener.onEvent(eventSource, "3", "message",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"123\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}");
+
+        assertThat(chunks).hasSize(3);
+        // 前两条没有 finish，tool_calls 不附加到 chunk 上
+        assertThat(chunks.get(0).getToolCalls()).isNull();
+        assertThat(chunks.get(1).getToolCalls()).isNull();
+        // 最后一条 finish 时，累积的 tool_calls 被附加
+        assertThat(chunks.get(2).getFinish()).isTrue();
+        assertThat(chunks.get(2).getFinishReason()).isEqualTo("tool_calls");
+        assertThat(chunks.get(2).getToolCalls()).hasSize(1);
+        assertThat(chunks.get(2).getToolCalls().get(0).getId()).isEqualTo("call_abc");
+        assertThat(chunks.get(2).getToolCalls().get(0).getName()).isEqualTo("query_order");
+        assertThat(chunks.get(2).getToolCalls().get(0).getArguments()).isEqualTo("{\"order_id\":\"dt123\"}");
+    }
 }

@@ -402,8 +402,11 @@ async function handleSaveTools() {
                 <el-table-column prop="toolName" label="名称" min-width="120" />
                 <el-table-column prop="toolType" label="类型" width="100" align="center">
                   <template #default="{ row }">
-                    <el-tag :type="row.toolType === 'builtin' ? 'success' : 'warning'" size="small">
-                      {{ row.toolType === 'builtin' ? '内置' : 'MCP' }}
+                    <el-tag
+                      :type="row.toolType === 'builtin' ? 'success' : row.toolType === 'workflow' ? 'primary' : 'warning'"
+                      size="small"
+                    >
+                      {{ row.toolType === 'builtin' ? '内置' : row.toolType === 'workflow' ? '工作流' : 'MCP' }}
                     </el-tag>
                   </template>
                 </el-table-column>
@@ -479,8 +482,29 @@ async function handleSaveTools() {
           </el-select>
         </el-form-item>
 
-        <el-form-item label="实现标识" prop="toolImpl" :rules="{ required: true, message: '请输入实现标识', trigger: 'blur' }">
-          <el-input v-model="toolForm.toolImpl" placeholder="如：weather 或 mcp-server-name/weather" />
+        <el-form-item
+          label="实现标识"
+          prop="toolImpl"
+          :rules="{ required: true, message: '请输入实现标识', trigger: 'blur' }"
+        >
+          <el-select
+            v-if="toolForm.toolType === 'workflow'"
+            v-model="toolForm.toolImpl"
+            placeholder="请选择工作流"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="opt in workflowOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="String(opt.value)"
+            />
+          </el-select>
+          <el-input
+            v-else
+            v-model="toolForm.toolImpl"
+            placeholder="如：weather 或 mcp-server-name/weather"
+          />
         </el-form-item>
 
         <el-form-item label="启用">

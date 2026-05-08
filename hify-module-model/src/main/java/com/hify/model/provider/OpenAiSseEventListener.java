@@ -30,6 +30,9 @@ public class OpenAiSseEventListener extends EventSourceListener {
     // 处理模型在 content 中输出 <think> 标签的情况
     private boolean inThinkTag = false;
 
+    // 累积 tool_calls（OpenAI 增量 SSE 格式会分多个 chunk 下发）
+    private final java.util.List<LlmToolCall> accumulatedToolCalls = new java.util.ArrayList<>();
+
     public OpenAiSseEventListener(Consumer<LlmStreamChunk> callback, ObjectMapper objectMapper) {
         this.callback = callback;
         this.objectMapper = objectMapper;
@@ -46,6 +49,10 @@ public class OpenAiSseEventListener extends EventSourceListener {
             // 过滤 <think> 标签内容，避免思考过程暴露给用户
             String filtered = filterThinkContent(chunk.getContent());
             chunk.setContent(filtered);
+            // 如果累积了 tool_calls，附加到 finish chunk 中
+            if (Boolean.TRUE.equals(chunk.getFinish()) && !accumulatedToolCalls.isEmpty()) {
+                chunk.setToolCalls(new java.util.ArrayList<>(accumulatedToolCalls));
+            }
             callback.accept(chunk);
             if (Boolean.TRUE.equals(chunk.getFinish())) {
                 eventSource.cancel();
@@ -128,8 +135,32 @@ public class OpenAiSseEventListener extends EventSourceListener {
         String reasoningContent = delta.path("reasoning_content").asText(null);
         String finishReason = firstChoice.path("finish_reason").asText(null);
 
-        // tool_calls 增量解析
-        List<LlmToolCall> toolCalls = OpenAiCompatibleProvider.parseToolCalls(delta.path("tool_calls"));
+        // tool_calls 增量累积解析
+        JsonNode deltaToolCalls = delta.path("tool_calls");
+        if (deltaToolCalls.isArray()) {
+            for (JsonNode tcDelta : deltaToolCalls) {
+                int index = tcDelta.path("index").asInt(0);
+                // 确保列表足够长
+                while (accumulatedToolCalls.size() <= index) {
+                    accumulatedToolCalls.add(LlmToolCall.builder().type("function").build());
+                }
+                LlmToolCall call = accumulatedToolCalls.get(index);
+                if (tcDelta.has("id")) {
+                    call.setId(tcDelta.path("id").asText(null));
+                }
+                if (tcDelta.has("type")) {
+                    call.setType(tcDelta.path("type").asText("function"));
+                }
+                JsonNode func = tcDelta.path("function");
+                if (func.has("name")) {
+                    call.setName(func.path("name").asText(null));
+                }
+                if (func.has("arguments")) {
+                    String argsDelta = func.path("arguments").asText("");
+                    call.setArguments((call.getArguments() != null ? call.getArguments() : "") + argsDelta);
+                }
+            }
+        }
 
         // usage 可能在最后一条返回
         LlmUsage usage = OpenAiCompatibleProvider.parseUsage(root.path("usage"));
@@ -137,7 +168,6 @@ public class OpenAiSseEventListener extends EventSourceListener {
         return LlmStreamChunk.builder()
                 .content(content)
                 .reasoningContent(reasoningContent)
-                .toolCalls(toolCalls)
                 .usage(usage)
                 .finish(finishReason != null)
                 .finishReason(finishReason)

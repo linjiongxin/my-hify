@@ -47,6 +47,7 @@ async function createSessionViaAPI(page: Page, agentId: string): Promise<number>
 
 test.describe('工作流对话 E2E 测试', () => {
   test('用户说订单号，工作流提取并走查询分支', async ({ page }) => {
+    test.setTimeout(120000)
     await loginAndNavigate(page, `${UI_BASE}/chat`)
 
     // 创建会话
@@ -72,9 +73,9 @@ test.describe('工作流对话 E2E 测试', () => {
     // 等待用户消息出现在聊天区域
     await expect(page.locator('.message-bubble.user')).toContainText('订单号是dt123', { timeout: 10000 })
 
-    // 等待 assistant 回复出现（workflow 模式会轮询，可能需要一些时间）
+    // 等待 assistant 回复出现（workflow 作为工具需先非流式探测+执行工作流+再生成回复，可能需要较长时间）
     const assistantBubble = page.locator('.message-bubble.assistant').last()
-    await expect(assistantBubble).not.toBeEmpty({ timeout: 35000 })
+    await expect(assistantBubble).not.toBeEmpty({ timeout: 90000 })
 
     // 获取回复文本
     const replyText = await assistantBubble.textContent()

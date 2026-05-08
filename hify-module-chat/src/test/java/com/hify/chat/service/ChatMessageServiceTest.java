@@ -12,6 +12,7 @@ import com.hify.common.core.enums.ResultCode;
 import com.hify.common.core.exception.BizException;
 import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
+import com.hify.model.api.dto.LlmChatResponse;
 import com.hify.model.api.dto.LlmMessage;
 import com.hify.model.api.dto.LlmStreamChunk;
 import com.hify.model.api.dto.LlmUsage;
@@ -379,6 +380,61 @@ class ChatMessageServiceTest {
     }
 
     @Test
+    void shouldInjectToolGuidance_whenAgentHasWorkflowTools() {
+        // 配置 Agent 绑定工作流工具
+        com.hify.agent.api.dto.AgentToolDTO tool = new com.hify.agent.api.dto.AgentToolDTO();
+        tool.setToolName("query_order");
+        tool.setToolType("workflow");
+        tool.setToolImpl("10");
+        tool.setEnabled(true);
+        agent.setTools(List.of(tool));
+        agent.setSystemPrompt("你是一个客服助手。");
+
+        com.hify.workflow.api.dto.WorkflowDTO workflow = new com.hify.workflow.api.dto.WorkflowDTO();
+        workflow.setId(10L);
+        workflow.setName("query_order");
+        workflow.setDescription("查询订单状态");
+
+        when(chatSessionService.getSessionOrThrow(100L, 1L)).thenReturn(session);
+        when(agentApi.getAgentById(10L)).thenReturn(agent);
+        when(chatMessageMapper.selectMaxSeqBySessionId(1L)).thenReturn(5);
+        when(chatMessageMapper.insert(any(ChatMessage.class))).thenAnswer(inv -> {
+            ChatMessage m = inv.getArgument(0);
+            m.setId(100L);
+            return 1;
+        });
+        when(chatMessageMapper.selectHistoryBySessionId(1L)).thenReturn(Collections.emptyList());
+        when(workflowApi.getById(10L)).thenReturn(workflow);
+        when(workflowApi.getNodes(10L)).thenReturn(Collections.emptyList());
+
+        // 非流式探测返回无 tool_calls 的直接回复
+        when(llmGatewayApi.chat(anyString(), any(LlmChatRequest.class)))
+                .thenReturn(LlmChatResponse.builder()
+                        .content("hello from llm")
+                        .finishReason("stop")
+                        .build());
+
+        chatMessageService.streamChat(100L, 1L, "hi", emitter);
+
+        ArgumentCaptor<LlmChatRequest> reqCaptor = ArgumentCaptor.forClass(LlmChatRequest.class);
+        verify(llmGatewayApi).chat(anyString(), reqCaptor.capture());
+        LlmChatRequest request = reqCaptor.getValue();
+
+        // 验证系统提示词包含工具指引
+        LlmMessage systemMsg = request.getMessages().get(0);
+        assertThat(systemMsg.getRole()).isEqualTo("system");
+        assertThat(systemMsg.getContent()).contains("你是一个客服助手。");
+        assertThat(systemMsg.getContent()).contains("工具使用指引");
+        assertThat(systemMsg.getContent()).contains("query_order");
+
+        // 验证 tools 已传递
+        assertThat(request.getTools()).hasSize(1);
+        assertThat(request.getTools().get(0).getFunction().getName()).isEqualTo("query_order");
+        // 有工具时 toolChoice 为 auto
+        assertThat(request.getToolChoice()).isEqualTo("auto");
+    }
+
+    @Test
     void shouldReturnMessages_whenListSessionMessages() {
         ChatMessage msg1 = createMessage(1L, 1, "user", "hello");
         ChatMessage msg2 = createMessage(1L, 2, "assistant", "hi");
@@ -393,7 +449,8 @@ class ChatMessageServiceTest {
     }
 
     @Test
-    void shouldStartWorkflow_whenAgentInWorkflowMode() throws Exception {
+    void shouldFallbackToReact_whenAgentInWorkflowMode() throws Exception {
+        // workflow 模式已废弃，现在统一走 ReAct 模式
         agent.setExecutionMode("workflow");
         agent.setWorkflowId(10L);
 
@@ -405,18 +462,20 @@ class ChatMessageServiceTest {
             m.setId(100L);
             return 1;
         });
+        when(chatMessageMapper.selectHistoryBySessionId(1L)).thenReturn(Collections.emptyList());
 
-        when(workflowApi.start(any(WorkflowStartRequest.class))).thenReturn("100");
+        doAnswer(inv -> {
+            Consumer<LlmStreamChunk> cb = inv.getArgument(2);
+            cb.accept(LlmStreamChunk.builder().content("ok").finish(true).finishReason("stop").build());
+            return null;
+        }).when(llmGatewayApi).streamChat(anyString(), any(LlmChatRequest.class), any());
 
         chatMessageService.streamChat(100L, 1L, "我要退款", emitter);
 
-        // 验证 workflowApi.start 被调用
-        ArgumentCaptor<WorkflowStartRequest> reqCaptor = ArgumentCaptor.forClass(WorkflowStartRequest.class);
-        verify(workflowApi).start(reqCaptor.capture());
-        assertThat(reqCaptor.getValue().getWorkflowId()).isEqualTo(10L);
-
-        // 验证 LLM 未被调用
-        verify(llmGatewayApi, never()).streamChat(anyString(), any(LlmChatRequest.class), any());
+        // 验证 workflowApi.start 不再被调用
+        verify(workflowApi, never()).start(any(WorkflowStartRequest.class));
+        // 验证 LLM 被调用
+        verify(llmGatewayApi).streamChat(anyString(), any(LlmChatRequest.class), any());
     }
 
     @Test

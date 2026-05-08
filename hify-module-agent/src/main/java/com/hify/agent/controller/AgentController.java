@@ -4,6 +4,7 @@ import com.hify.agent.dto.AgentCreateRequest;
 import com.hify.agent.dto.AgentToolBatchRequest;
 import com.hify.agent.dto.AgentUpdateRequest;
 import com.hify.agent.service.AgentService;
+import com.hify.agent.vo.AgentToolVO;
 import com.hify.agent.vo.AgentVO;
 import com.hify.common.web.entity.PageParam;
 import com.hify.common.web.entity.PageResult;
@@ -11,6 +12,8 @@ import com.hify.common.web.entity.Result;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * Agent 控制器
@@ -70,9 +73,9 @@ public class AgentController {
      * 获取 Agent 绑定的工具
      */
     @GetMapping("/{id}/tools")
-    public Result<Void> getTools(@PathVariable("id") Long id) {
-        // TODO: 后续实现
-        return Result.success();
+    public Result<List<AgentToolVO>> getTools(@PathVariable("id") Long id) {
+        AgentVO agent = agentService.getAgentDetail(id);
+        return Result.success(agent.getTools() != null ? agent.getTools() : List.of());
     }
 
     /**
