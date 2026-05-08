@@ -509,6 +509,7 @@ public class ChatMessageService {
         }
         try {
             Map<String, Object> context = objectMapper.readValue(contextJson, new TypeReference<>() {});
+            // 1. 先尝试旧格式的扁平 key（向后兼容）
             Object reply = context.get("reply");
             if (reply != null) {
                 return reply.toString();
@@ -516,6 +517,13 @@ public class ChatMessageService {
             Object llmResponse = context.get("llmResponse");
             if (llmResponse != null) {
                 return llmResponse.toString();
+            }
+            // 2. 再尝试新格式的节点隔离 key（如 node_llm.llmResponse）
+            for (Map.Entry<String, Object> entry : context.entrySet()) {
+                String key = entry.getKey();
+                if (key.endsWith(".reply") || key.endsWith(".llmResponse")) {
+                    return entry.getValue().toString();
+                }
             }
             return null;
         } catch (Exception e) {

@@ -129,10 +129,7 @@ public class WorkflowEngine {
         instance.setStartedAt(LocalDateTime.now());
 
         // 初始化上下文
-        ExecutionContext context = new ExecutionContext();
-        if (inputs != null) {
-            context.getVariables().putAll(inputs);
-        }
+        ExecutionContext context = new ExecutionContext(instance.getId(), inputs);
         instance.setContext(toJson(context.getAll()));
 
         workflowInstanceMapper.insert(instance);
@@ -509,12 +506,12 @@ public class WorkflowEngine {
      * 从实例加载上下文
      */
     private ExecutionContext loadContext(WorkflowInstance instance) {
-        ExecutionContext context = new ExecutionContext();
+        ExecutionContext context = new ExecutionContext(instance.getId(), null);
         if (instance.getContext() != null && !instance.getContext().isEmpty()) {
             try {
                 Map<String, Object> vars = objectMapper.readValue(instance.getContext(),
                         new TypeReference<Map<String, Object>>() {});
-                context.getVariables().putAll(vars);
+                vars.forEach(context::put);
             } catch (Exception e) {
                 log.warn("Failed to parse context: {}", e.getMessage());
             }

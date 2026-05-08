@@ -296,6 +296,8 @@ GET /api/workflow/instance/{instanceId}/pending-approvals
 }
 ```
 
+> **变量隔离**：执行引擎会将输出变量按 `"nodeId.outputVar"` 格式写入上下文（如 `"node_llm.llmResponse"`），避免多个 LLM/TOOL 节点互相覆盖。同时保留扁平 key（如 `"llmResponse""`）便于下游兼容读取。
+
 ### TOOL
 ```json
 {

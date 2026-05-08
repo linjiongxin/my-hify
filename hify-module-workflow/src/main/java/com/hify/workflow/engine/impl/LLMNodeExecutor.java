@@ -57,8 +57,10 @@ public class LLMNodeExecutor implements NodeExecutor {
                 content = "";
             }
 
-            // 存入上下文
+            // 存入上下文（按节点命名空间写入，避免多节点覆盖）
             if (config.outputVar() != null && !config.outputVar().isEmpty()) {
+                context.set(node.getNodeId(), config.outputVar(), content);
+                // 同时保留扁平 key，便于下游兼容读取
                 context.put(config.outputVar(), content);
             }
 
