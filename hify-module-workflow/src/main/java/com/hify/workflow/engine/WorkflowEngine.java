@@ -8,6 +8,7 @@ import com.hify.workflow.engine.config.NodeConfigParser;
 import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.engine.executor.NodeExecutor;
 import com.hify.workflow.engine.executor.NodeExecutorRegistry;
+import com.hify.common.core.exception.BizException;
 import com.hify.workflow.engine.util.PlaceholderUtils;
 import com.hify.workflow.entity.*;
 import com.hify.workflow.mapper.*;
@@ -39,6 +40,16 @@ public class WorkflowEngine {
      * 全局默认重试配置
      */
     private static final RetryConfig DEFAULT_RETRY_CONFIG = new RetryConfig();
+
+    /**
+     * 最大执行步数（防止配置错误导致死循环）
+     */
+    private int maxExecutionSteps = 50;
+
+    /**
+     * 同步执行超时时间（毫秒）
+     */
+    private long syncTimeoutMs = 30000L;
 
     @Autowired
     private WorkflowMapper workflowMapper;
@@ -94,6 +105,35 @@ public class WorkflowEngine {
         }
 
         log.info("Resumed {} pending instances", pendingInstances.size());
+    }
+
+    /**
+     * 同步执行工作流（阻塞直到完成或失败）
+     *
+     * @param workflowId 工作流 ID
+     * @param inputs     输入参数
+     * @return 执行完成后的实例
+     */
+    public WorkflowInstance executeSync(Long workflowId, Map<String, Object> inputs) {
+        String instanceId = start(workflowId, inputs);
+        long deadline = System.currentTimeMillis() + syncTimeoutMs;
+
+        while (System.currentTimeMillis() < deadline) {
+            WorkflowInstance instance = workflowInstanceMapper.selectById(Long.valueOf(instanceId));
+            if (instance == null) {
+                throw new BizException("Workflow instance not found: " + instanceId);
+            }
+            if ("COMPLETED".equals(instance.getStatus()) || "FAILED".equals(instance.getStatus())) {
+                return instance;
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new BizException("Workflow execution interrupted");
+            }
+        }
+        throw new BizException("Workflow execution timeout after " + syncTimeoutMs + "ms");
     }
 
     /**
@@ -178,6 +218,14 @@ public class WorkflowEngine {
         ExecutionContext context = loadContext(instance);
         context.put("_instanceId", instanceId);
         context.put("_workflowId", instance.getWorkflowId());
+
+        // 执行步数限制（兜底保护，防止配置错误导致死循环）
+        int stepCount = getStepCount(context);
+        if (stepCount >= maxExecutionSteps) {
+            failInstance(instance, "Execution exceeded maximum steps (" + maxExecutionSteps + ")");
+            return;
+        }
+        incrementStepCount(context);
 
         // 循环检测
         if (isNodeVisited(context, nodeId)) {
@@ -564,6 +612,24 @@ public class WorkflowEngine {
         }
         visitedNodes.add(nodeId);
         context.put("_visitedNodes", visitedNodes);
+    }
+
+    /**
+     * 获取当前执行步数
+     */
+    private int getStepCount(ExecutionContext context) {
+        Object count = context.get("_stepCount");
+        if (count instanceof Number n) {
+            return n.intValue();
+        }
+        return 0;
+    }
+
+    /**
+     * 递增执行步数
+     */
+    private void incrementStepCount(ExecutionContext context) {
+        context.put("_stepCount", getStepCount(context) + 1);
     }
 
     /**

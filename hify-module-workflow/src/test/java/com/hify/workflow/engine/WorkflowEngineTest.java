@@ -32,6 +32,8 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import java.util.Map;
+
 @ExtendWith(MockitoExtension.class)
 class WorkflowEngineTest {
 
@@ -69,6 +71,8 @@ class WorkflowEngineTest {
         ReflectionTestUtils.setField(workflowEngine, "nodeConfigParser", nodeConfigParser);
         ReflectionTestUtils.setField(workflowEngine, "nodeExecutionRecorder", nodeExecutionRecorder);
         ReflectionTestUtils.setField(workflowEngine, "objectMapper", new ObjectMapper());
+        ReflectionTestUtils.setField(workflowEngine, "maxExecutionSteps", 50);
+        ReflectionTestUtils.setField(workflowEngine, "syncTimeoutMs", 30000);
     }
 
     @Test
@@ -472,5 +476,103 @@ class WorkflowEngineTest {
             if (i.getContext() == null) return false;
             return i.getContext().contains("_visitedNodes") && i.getContext().contains("node_a");
         }));
+    }
+
+    @Test
+    void shouldFailInstance_whenExceedsMaxExecutionSteps() {
+        // Given: 3 节点链 start->a->b->c(end)，MAX_STEPS 设为 2
+        WorkflowInstance instance = new WorkflowInstance();
+        instance.setId(100L);
+        instance.setWorkflowId(1L);
+        instance.setCurrentNodeId("node_start");
+        instance.setStatus("RUNNING");
+        instance.setContext("{}");
+
+        WorkflowNode startNode = createNode(1L, "node_start", "START");
+        WorkflowNode nodeA = createNode(1L, "node_a", "LLM");
+        WorkflowNode nodeB = createNode(1L, "node_b", "LLM");
+
+        WorkflowEdge edgeStartA = createEdge("node_start", "node_a");
+        WorkflowEdge edgeAB = createEdge("node_a", "node_b");
+        WorkflowEdge edgeBC = createEdge("node_b", "node_c");
+
+        when(workflowInstanceMapper.selectById(100L)).thenReturn(instance);
+        when(workflowNodeMapper.selectOne(any(LambdaQueryWrapper.class)))
+                .thenReturn(startNode)
+                .thenReturn(nodeA)
+                .thenReturn(nodeB);
+        when(workflowEdgeMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(edgeStartA))
+                .thenReturn(List.of(edgeAB))
+                .thenReturn(List.of(edgeBC));
+        when(workflowInstanceMapper.updateById(any(WorkflowInstance.class))).thenReturn(1);
+        when(nodeExecutionRecorder.recordStart(any(), any(), any())).thenReturn(1L);
+
+        NodeExecutor mockExecutor = mock(NodeExecutor.class);
+        when(mockExecutor.execute(any(), any(), any())).thenReturn(NodeResult.success(null));
+        when(nodeExecutorRegistry.get(anyString())).thenReturn(mockExecutor);
+
+        ReflectionTestUtils.setField(workflowEngine, "maxExecutionSteps", 2);
+
+        // When
+        workflowEngine.executeAsync(100L, "node_start");
+
+        // Then: 实例应该被标记为 FAILED，且错误信息包含 exceeded
+        verify(workflowInstanceMapper, atLeastOnce()).updateById(argThat((WorkflowInstance i) ->
+                "FAILED".equals(i.getStatus()) && i.getErrorMsg() != null && i.getErrorMsg().contains("exceeded")));
+    }
+
+    @Test
+    void shouldReturnCompletedInstance_whenExecuteSyncFinishes() {
+        // Given
+        WorkflowInstance completed = new WorkflowInstance();
+        completed.setId(100L);
+        completed.setStatus("COMPLETED");
+        completed.setContext("{\"reply\":\"hello\"}");
+
+        doReturn("100").when(workflowEngine).start(eq(1L), any());
+        when(workflowInstanceMapper.selectById(100L)).thenReturn(completed);
+
+        // When
+        WorkflowInstance result = workflowEngine.executeSync(1L, Map.of("userMessage", "hello"));
+
+        // Then
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void shouldThrowBizException_whenExecuteSyncTimesOut() {
+        // Given: 工作流一直处于 RUNNING 状态
+        WorkflowInstance running = new WorkflowInstance();
+        running.setId(100L);
+        running.setStatus("RUNNING");
+
+        doReturn("100").when(workflowEngine).start(eq(1L), any());
+        when(workflowInstanceMapper.selectById(100L)).thenReturn(running);
+
+        ReflectionTestUtils.setField(workflowEngine, "syncTimeoutMs", 100);
+
+        // When / Then
+        assertThatThrownBy(() -> workflowEngine.executeSync(1L, Map.of("userMessage", "hello")))
+                .isInstanceOf(com.hify.common.core.exception.BizException.class)
+                .hasMessageContaining("timeout");
+    }
+
+    private WorkflowNode createNode(Long workflowId, String nodeId, String type) {
+        WorkflowNode node = new WorkflowNode();
+        node.setWorkflowId(workflowId);
+        node.setNodeId(nodeId);
+        node.setType(type);
+        node.setConfig("{}");
+        return node;
+    }
+
+    private WorkflowEdge createEdge(String source, String target) {
+        WorkflowEdge edge = new WorkflowEdge();
+        edge.setSourceNode(source);
+        edge.setTargetNode(target);
+        edge.setEdgeIndex(0);
+        return edge;
     }
 }
