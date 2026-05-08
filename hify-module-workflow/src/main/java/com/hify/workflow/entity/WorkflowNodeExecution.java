@@ -1,7 +1,9 @@
 package com.hify.workflow.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.hify.common.web.entity.base.BaseEntity;
+import com.hify.common.web.handler.JsonbStringTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -38,11 +40,13 @@ public class WorkflowNodeExecution extends BaseEntity {
     /**
      * 输入参数（JSON）
      */
+    @TableField(typeHandler = JsonbStringTypeHandler.class)
     private String inputJson;
 
     /**
      * 输出结果（JSON）
      */
+    @TableField(typeHandler = JsonbStringTypeHandler.class)
     private String outputJson;
 
     /**

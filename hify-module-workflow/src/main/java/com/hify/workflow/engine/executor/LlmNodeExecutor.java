@@ -1,5 +1,6 @@
 package com.hify.workflow.engine.executor;
 
+import com.hify.common.core.util.LlmOutputCleaner;
 import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmChatResponse;
@@ -54,6 +55,7 @@ public class LlmNodeExecutor implements NodeExecutor {
             if (content == null) {
                 content = "";
             }
+            content = LlmOutputCleaner.stripThinking(content);
 
             if (llmConfig.outputVar() != null && !llmConfig.outputVar().isEmpty()) {
                 context.set(node.getNodeId(), llmConfig.outputVar(), content);

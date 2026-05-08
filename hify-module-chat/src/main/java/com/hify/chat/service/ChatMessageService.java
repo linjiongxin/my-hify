@@ -15,6 +15,7 @@ import com.hify.chat.mapper.ChatSessionMapper;
 import com.hify.chat.vo.ChatMessageVO;
 import com.hify.common.core.enums.ResultCode;
 import com.hify.common.core.exception.BizException;
+import com.hify.common.core.util.LlmOutputCleaner;
 import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmMessage;
@@ -36,6 +37,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -120,6 +122,7 @@ public class ChatMessageService {
         ChatMessage assistantMsg = createAssistantPlaceholder(sessionId, userMsg.getSeq() + 1, agent.getModelId());
 
         AtomicReference<StringBuilder> contentRef = new AtomicReference<>(new StringBuilder());
+        AtomicBoolean inThinkBlock = new AtomicBoolean(false);
 
         try {
             LlmChatRequest request = buildLlmChatRequest(agent, context);
@@ -134,14 +137,17 @@ public class ChatMessageService {
 
                     String text = chunk.getContent();
                     if (text != null && !text.isEmpty()) {
+                        String filtered = filterStreamingThink(text, inThinkBlock);
                         contentRef.get().append(text);
-                        emitter.send(SseEmitter.event()
-                                .name("message")
-                                .data(Map.of("content", text, "timestamp", System.currentTimeMillis())));
+                        if (filtered != null && !filtered.isEmpty()) {
+                            emitter.send(SseEmitter.event()
+                                    .name("message")
+                                    .data(Map.of("content", filtered, "timestamp", System.currentTimeMillis())));
+                        }
                     }
 
                     if (Boolean.TRUE.equals(chunk.getFinish())) {
-                        String fullContent = contentRef.get().toString();
+                        String fullContent = LlmOutputCleaner.stripThinking(contentRef.get().toString());
                         finalizeAssistantMessage(assistantMsg, fullContent, chunk, startTime);
                         updateSessionAfterChat(session, fullContent);
                         cacheMessages(sessionId);
@@ -567,5 +573,46 @@ public class ChatMessageService {
         } catch (Exception e) {
             log.error("Failed to save workflow result: sessionId={}", session.getId(), e);
         }
+    }
+
+    /**
+     * 流式分块 thinking 内容过滤
+     *
+     * @return 过滤后的文本；如果整块都在 think 标签内则返回空字符串
+     */
+    private String filterStreamingThink(String text, AtomicBoolean inThinkBlock) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        if (inThinkBlock.get()) {
+            int closeIdx = text.indexOf("</think>");
+            if (closeIdx == -1) {
+                closeIdx = text.indexOf("</thinking>");
+            }
+            if (closeIdx != -1) {
+                inThinkBlock.set(false);
+                return text.substring(closeIdx + (text.charAt(closeIdx + 2) == 't' ? 8 : 11));
+            }
+            return "";
+        }
+        int openIdx = text.indexOf("<think>");
+        if (openIdx == -1) {
+            openIdx = text.indexOf("<thinking>");
+        }
+        if (openIdx != -1) {
+            inThinkBlock.set(true);
+            String before = text.substring(0, openIdx);
+            String after = text.substring(openIdx + (text.charAt(openIdx + 2) == 't' && text.charAt(openIdx + 3) == 'h' ? 10 : 7));
+            int closeIdx = after.indexOf("</think>");
+            if (closeIdx == -1) {
+                closeIdx = after.indexOf("</thinking>");
+            }
+            if (closeIdx != -1) {
+                inThinkBlock.set(false);
+                return before + after.substring(closeIdx + (after.charAt(closeIdx + 2) == 't' ? 8 : 11));
+            }
+            return before;
+        }
+        return text;
     }
 }
