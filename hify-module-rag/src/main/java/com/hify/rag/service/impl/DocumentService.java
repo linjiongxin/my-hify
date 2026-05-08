@@ -278,14 +278,16 @@ public class DocumentService implements DocumentApi {
         return fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
     }
 
+    private static final int VECTOR_DIM = 1536;
+
     private String vectorToString(float[] vector) {
         if (vector == null || vector.length == 0) {
             return "[]";
         }
         StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < vector.length; i++) {
+        for (int i = 0; i < VECTOR_DIM; i++) {
             if (i > 0) sb.append(",");
-            sb.append(vector[i]);
+            sb.append(i < vector.length ? vector[i] : 0.0f);
         }
         sb.append("]");
         return sb.toString();

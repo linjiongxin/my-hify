@@ -96,6 +96,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
                 .url(apiUrl)
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
+                .header("Connection", "close")
                 .post(RequestBody.create(jsonBody, MediaType.parse("application/json")));
 
         applyAuthHeaders(requestBuilder, provider, request);

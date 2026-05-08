@@ -141,7 +141,9 @@ export function getKnowledgeBaseOptions(): Promise<KnowledgeBaseOption[]> {
 export function getAgentKbBindings(agentId: number): Promise<AgentKbBinding[]> {
   return fetch(`${baseUrl}/rag/agent-kb/agent/${agentId}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
-  }).then((r) => r.json())
+  })
+    .then((r) => r.json())
+    .then((res: any) => res.data || [])
 }
 
 export function bindAgentKb(data: AgentKbBindRequest): Promise<void> {

@@ -179,12 +179,12 @@ CREATE TABLE IF NOT EXISTS agent_knowledge_base (
     similarity_threshold DECIMAL(3,2) NOT NULL DEFAULT 0.7,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
     created_by BIGINT,
     updated_by BIGINT,
 
     CONSTRAINT fk_akb_agent FOREIGN KEY (agent_id) REFERENCES agent(id),
-    CONSTRAINT fk_akb_kb FOREIGN KEY (kb_id) REFERENCES knowledge_base(id),
     CONSTRAINT uk_akb_agent_kb UNIQUE (agent_id, kb_id)
 );
 
@@ -330,7 +330,7 @@ CREATE TABLE IF NOT EXISTS document_chunk (
     kb_id BIGINT NOT NULL,
     document_id BIGINT NOT NULL,
     content TEXT NOT NULL,
-    embedding VECTOR(1024),
+    embedding VECTOR(1536),
     chunk_index INT NOT NULL DEFAULT 0,
     meta_json JSONB,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -358,15 +358,14 @@ CREATE INDEX vec_document_chunk_embedding ON document_chunk USING ivfflat (embed
 -- 工作流模块（前缀: workflow_）
 -- ========================================
 
-CREATE TABLE IF NOT EXISTS workflow_definition (
+CREATE TABLE IF NOT EXISTS workflow (
     id BIGINT PRIMARY KEY,
     name VARCHAR(64) NOT NULL,
     description TEXT,
-    agent_id BIGINT,
-    nodes_json JSONB NOT NULL,
-    edges_json JSONB NOT NULL,
-    variables_json JSONB,
-    enabled BOOLEAN DEFAULT TRUE,
+    status VARCHAR(16) DEFAULT 'draft',
+    version INTEGER DEFAULT 1,
+    retry_config TEXT,
+    config TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -374,11 +373,52 @@ CREATE TABLE IF NOT EXISTS workflow_definition (
     updated_by BIGINT
 );
 
-CREATE TRIGGER update_workflow_definition_updated_at
-    BEFORE UPDATE ON workflow_definition
+CREATE TRIGGER update_workflow_updated_at
+    BEFORE UPDATE ON workflow
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE INDEX idx_workflow_definition_agent_id ON workflow_definition(agent_id);
+CREATE TABLE IF NOT EXISTS workflow_node (
+    id BIGINT PRIMARY KEY,
+    workflow_id BIGINT NOT NULL,
+    node_id VARCHAR(64) NOT NULL,
+    type VARCHAR(32) NOT NULL,
+    name VARCHAR(64) NOT NULL,
+    config TEXT,
+    position_x INTEGER,
+    position_y INTEGER,
+    retry_config TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_workflow_node_updated_at
+    BEFORE UPDATE ON workflow_node
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_workflow_node_workflow_id ON workflow_node(workflow_id);
+
+CREATE TABLE IF NOT EXISTS workflow_edge (
+    id BIGINT PRIMARY KEY,
+    workflow_id BIGINT NOT NULL,
+    source_node VARCHAR(64) NOT NULL,
+    target_node VARCHAR(64) NOT NULL,
+    condition VARCHAR(256),
+    edge_index INTEGER DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_workflow_edge_updated_at
+    BEFORE UPDATE ON workflow_edge
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_workflow_edge_workflow_id ON workflow_edge(workflow_id);
 
 CREATE TABLE IF NOT EXISTS workflow_instance (
     id BIGINT PRIMARY KEY,
@@ -505,7 +545,8 @@ VALUES
 (3, 'Ollama', 'ollama', 'openai_compatible', 'http://localhost:11434/v1', 'NONE', '', '{}', true, 99),
 (4, '通义千问', 'qwen', 'openai_compatible', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'BEARER', '', '{}', true, 3),
 (5, 'Azure OpenAI', 'azure_openai', 'openai_compatible', 'https://your-resource.openai.azure.com/openai/deployments', 'API_KEY', '', '{"headerName":"api-key","prefix":""}', true, 4),
-(6, 'Claude (Anthropic)', 'anthropic', 'anthropic', 'https://api.anthropic.com', 'API_KEY', '', '{"headerName":"x-api-key","prefix":""}', true, 5);
+(6, 'Claude (Anthropic)', 'anthropic', 'anthropic', 'https://api.anthropic.com', 'API_KEY', '', '{"headerName":"x-api-key","prefix":""}', true, 5),
+(7, 'MiniMax', 'minimax', 'openai_compatible', 'https://api.minimax.io/v1', 'BEARER', '', '{}', true, 6);
 
 -- 模型
 INSERT INTO model_config (id, provider_id, name, model_id, max_tokens, context_window, capabilities, default_model, enabled)
@@ -520,7 +561,10 @@ VALUES
 (8, 4, 'Qwen-VL-Max', 'qwen-vl-max', 2048, 32768, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', false, true),
 (9, 5, 'GPT-4o (Azure)', 'gpt-4o-azure', 4096, 128000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":false,"jsonMode":true}', true, true),
 (10, 6, 'Claude Sonnet 4.6', 'claude-sonnet-4-6', 8192, 200000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":true,"jsonMode":true}', true, true),
-(11, 6, 'Claude Opus 4.7', 'claude-opus-4-7', 8192, 200000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":true,"jsonMode":true}', false, true);
+(11, 6, 'Claude Opus 4.7', 'claude-opus-4-7', 8192, 200000, '{"chat":true,"streaming":true,"vision":true,"toolCalling":true,"reasoning":true,"jsonMode":true}', false, true),
+(12, 7, 'MiniMax-M2.7', 'MiniMax-M2.7', 8192, 204800, '{"chat":true,"streaming":true,"vision":false,"toolCalling":true,"reasoning":true,"jsonMode":true}', true, true),
+(13, 7, 'MiniMax-M2.5', 'MiniMax-M2.5', 8192, 204800, '{"chat":true,"streaming":true,"vision":false,"toolCalling":true,"reasoning":true,"jsonMode":true}', false, true),
+(14, 7, 'MiniMax-M2.1', 'MiniMax-M2.1', 8192, 204800, '{"chat":true,"streaming":true,"vision":false,"toolCalling":true,"reasoning":false,"jsonMode":true}', false, true);
 
 -- 验证安装
 SELECT 'pgvector version: ' || extversion AS info

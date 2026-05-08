@@ -90,8 +90,29 @@ public class OpenAiSseEventListener extends EventSourceListener {
 
     @Override
     public void onFailure(EventSource eventSource, Throwable t, Response response) {
-        log.error("SSE 流连接异常", t);
-        callback.accept(LlmStreamChunk.builder().finish(true).build());
+        String errorMsg = "SSE 流连接异常";
+        if (response != null) {
+            errorMsg += " (HTTP " + response.code() + ")";
+            try {
+                if (response.body() != null) {
+                    String body = response.body().string();
+                    errorMsg += ": " + body;
+                }
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        if (t != null) {
+            errorMsg += " | " + t.getMessage();
+            log.error("SSE 流连接异常", t);
+        } else {
+            log.error("SSE 流连接异常: {}", errorMsg);
+        }
+        callback.accept(LlmStreamChunk.builder()
+                .error(errorMsg)
+                .finish(true)
+                .finishReason("error")
+                .build());
     }
 
     private LlmStreamChunk parseStreamChunk(String json) throws IOException {

@@ -125,6 +125,13 @@ public class ChatMessageService {
             LlmChatRequest request = buildLlmChatRequest(agent, context);
             llmGatewayApi.streamChat(agent.getModelId(), request, chunk -> {
                 try {
+                    // 优先处理错误
+                    if (chunk.getError() != null && !chunk.getError().isEmpty()) {
+                        log.error("LLM 流式返回错误, sessionId={}, error={}", sessionId, chunk.getError());
+                        handleLlmError(assistantMsg, emitter, new RuntimeException(chunk.getError()));
+                        return;
+                    }
+
                     String text = chunk.getContent();
                     if (text != null && !text.isEmpty()) {
                         contentRef.get().append(text);

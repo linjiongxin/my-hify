@@ -50,4 +50,9 @@ public class LlmStreamChunk implements Serializable {
      * 结束原因: stop / length / content_filter / tool_calls / error
      */
     private String finishReason;
+
+    /**
+     * 流式传输过程中的错误信息（如连接失败、API 返回 401 等）
+     */
+    private String error;
 }
