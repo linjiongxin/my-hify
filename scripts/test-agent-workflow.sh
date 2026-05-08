@@ -45,14 +45,15 @@ if [ -z "$WORKFLOW_ID" ] || [ "$WORKFLOW_ID" = "null" ]; then
 fi
 echo "工作流 ID: $WORKFLOW_ID"
 
-# 2. 保存工作流节点（START -> END，无 LLM 调用，适合本地无 API Key 环境）
+# 2. 保存工作流节点（START -> LLM -> END，使用 MiniMax-M2.7）
 echo ""
 echo "[2/7] 保存工作流节点"
 curl -s -X PUT "${BASE_URL}/workflow/${WORKFLOW_ID}/nodes" \
   -H "Content-Type: application/json" \
   -d '[
     {"nodeId":"node_start","type":"START","name":"开始","config":"{}","positionX":100,"positionY":100},
-    {"nodeId":"node_end","type":"END","name":"结束","config":"{}","positionX":300,"positionY":100}
+    {"nodeId":"node_llm","type":"LLM","name":"生成回复","config":"{\"model\":\"MiniMax-M2.7\",\"prompt\":\"用户说：${userMessage}，请友好回复\",\"outputVar\":\"llmResponse\"}","positionX":300,"positionY":100},
+    {"nodeId":"node_end","type":"END","name":"结束","config":"{}","positionX":500,"positionY":100}
   ]' | jq -r '. | length'
 
 # 3. 保存工作流连线
@@ -61,7 +62,8 @@ echo "[3/7] 保存工作流连线"
 curl -s -X PUT "${BASE_URL}/workflow/${WORKFLOW_ID}/edges" \
   -H "Content-Type: application/json" \
   -d '[
-    {"sourceNode":"node_start","targetNode":"node_end","condition":null,"edgeIndex":0}
+    {"sourceNode":"node_start","targetNode":"node_llm","condition":null,"edgeIndex":0},
+    {"sourceNode":"node_llm","targetNode":"node_end","condition":null,"edgeIndex":0}
   ]' | jq -r '. | length'
 
 # 4. 创建 workflow 模式 Agent
@@ -70,7 +72,7 @@ echo "[4/7] 创建 workflow 模式 Agent"
 AGENT_JSON=$(cat <<EOF
 {
   "name": "退款客服(workflow模式)",
-  "modelId": "gpt-4o",
+  "modelId": "MiniMax-M2.7",
   "systemPrompt": "你是退款客服助手",
   "workflowId": ${WORKFLOW_ID},
   "executionMode": "workflow"
