@@ -12,6 +12,9 @@ server:
 spring:
   application:
     name: hify-server
+  mvc:
+    async:
+      request-timeout: 120000
 
   # 数据源配置
   datasource:
