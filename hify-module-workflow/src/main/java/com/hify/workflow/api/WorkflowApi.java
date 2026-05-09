@@ -49,6 +49,11 @@ public interface WorkflowApi {
     WorkflowInstanceDTO getInstanceById(Long instanceId);
 
     /**
+     * 分页查询工作流实例
+     */
+    PageResult<WorkflowInstanceDTO> listInstances(InstanceQueryDTO query);
+
+    /**
      * 获取工作流节点
      */
     List<WorkflowNodeDTO> getNodes(Long workflowId);
@@ -101,11 +106,30 @@ public interface WorkflowApi {
     List<WorkflowApprovalDTO> getPendingApprovals(Long instanceId);
 
     /**
+     * 查询实例的节点执行记录
+     *
+     * @param instanceId 实例 ID
+     * @return 节点执行记录列表，按开始时间升序
+     */
+    List<WorkflowNodeExecutionDTO> getNodeExecutions(Long instanceId);
+
+    /**
      * 查询条件 DTO
      */
     @Data
     class WorkflowQueryDTO {
         private String name;
+        private String status;
+        private Integer page = 1;
+        private Integer pageSize = 20;
+    }
+
+    /**
+     * 实例查询 DTO
+     */
+    @Data
+    class InstanceQueryDTO {
+        private Long workflowId;
         private String status;
         private Integer page = 1;
         private Integer pageSize = 20;

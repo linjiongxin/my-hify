@@ -23,6 +23,7 @@ import com.hify.workflow.mapper.WorkflowApprovalMapper;
 import com.hify.workflow.mapper.WorkflowEdgeMapper;
 import com.hify.workflow.mapper.WorkflowInstanceMapper;
 import com.hify.workflow.mapper.WorkflowMapper;
+import com.hify.workflow.mapper.WorkflowNodeExecutionMapper;
 import com.hify.workflow.mapper.WorkflowNodeMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,6 +58,9 @@ class WorkflowExecutionServiceTest {
 
     @Mock
     private WorkflowApprovalMapper workflowApprovalMapper;
+
+    @Mock
+    private WorkflowNodeExecutionMapper workflowNodeExecutionMapper;
 
     @Mock
     private WorkflowEngine workflowEngine;
@@ -432,5 +436,99 @@ class WorkflowExecutionServiceTest {
         assertThatThrownBy(() -> workflowExecutionService.saveEdges(999L, List.of(edgeDto)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Workflow not found");
+    }
+
+    @Test
+    void shouldReturnNodeExecutions_whenInstanceHasExecutions() {
+        com.hify.workflow.entity.WorkflowNodeExecution exec1 = new com.hify.workflow.entity.WorkflowNodeExecution();
+        exec1.setId(1L);
+        exec1.setExecutionId(100L);
+        exec1.setNodeId("node_start");
+        exec1.setNodeType("START");
+        exec1.setStatus("completed");
+        exec1.setInputJson("{\"input\":\"hello\"}");
+        exec1.setOutputJson("{\"output\":\"world\"}");
+        exec1.setStartedAt(LocalDateTime.of(2025, 5, 8, 14, 0, 0));
+        exec1.setEndedAt(LocalDateTime.of(2025, 5, 8, 14, 0, 1));
+
+        com.hify.workflow.entity.WorkflowNodeExecution exec2 = new com.hify.workflow.entity.WorkflowNodeExecution();
+        exec2.setId(2L);
+        exec2.setExecutionId(100L);
+        exec2.setNodeId("node_llm");
+        exec2.setNodeType("LLM");
+        exec2.setStatus("failed");
+        exec2.setErrorMsg("Timeout");
+        exec2.setStartedAt(LocalDateTime.of(2025, 5, 8, 14, 0, 2));
+        exec2.setEndedAt(LocalDateTime.of(2025, 5, 8, 14, 0, 5));
+
+        when(workflowNodeExecutionMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(List.of(exec1, exec2));
+
+        List<com.hify.workflow.api.dto.WorkflowNodeExecutionDTO> result =
+                workflowExecutionService.getNodeExecutions(100L);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getNodeId()).isEqualTo("node_start");
+        assertThat(result.get(0).getStatus()).isEqualTo("completed");
+        assertThat(result.get(0).getInputJson()).isEqualTo("{\"input\":\"hello\"}");
+        assertThat(result.get(1).getNodeId()).isEqualTo("node_llm");
+        assertThat(result.get(1).getStatus()).isEqualTo("failed");
+        assertThat(result.get(1).getErrorMsg()).isEqualTo("Timeout");
+    }
+
+    @Test
+    void shouldReturnEmptyList_whenInstanceHasNoExecutions() {
+        when(workflowNodeExecutionMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Collections.emptyList());
+
+        List<com.hify.workflow.api.dto.WorkflowNodeExecutionDTO> result =
+                workflowExecutionService.getNodeExecutions(100L);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void shouldReturnPagedInstances_whenQueryByWorkflowId() {
+        WorkflowInstance instance1 = new WorkflowInstance();
+        instance1.setId(100L);
+        instance1.setWorkflowId(1L);
+        instance1.setStatus("completed");
+
+        WorkflowInstance instance2 = new WorkflowInstance();
+        instance2.setId(101L);
+        instance2.setWorkflowId(1L);
+        instance2.setStatus("failed");
+
+        Page<WorkflowInstance> page = new Page<>(1, 20);
+        page.setRecords(List.of(instance1, instance2));
+        page.setTotal(2L);
+        page.setPages(1L);
+
+        when(workflowInstanceMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        WorkflowApi.InstanceQueryDTO query = new WorkflowApi.InstanceQueryDTO();
+        query.setWorkflowId(1L);
+        PageResult<WorkflowInstanceDTO> result = workflowExecutionService.listInstances(query);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getRecords()).hasSize(2);
+        assertThat(result.getTotal()).isEqualTo(2L);
+    }
+
+    @Test
+    void shouldReturnEmptyPage_whenNoInstancesMatch() {
+        Page<WorkflowInstance> page = new Page<>(1, 20);
+        page.setRecords(Collections.emptyList());
+        page.setTotal(0L);
+        page.setPages(0L);
+
+        when(workflowInstanceMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        WorkflowApi.InstanceQueryDTO query = new WorkflowApi.InstanceQueryDTO();
+        query.setWorkflowId(999L);
+        PageResult<WorkflowInstanceDTO> result = workflowExecutionService.listInstances(query);
+
+        assertThat(result.getRecords()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(0L);
     }
 }

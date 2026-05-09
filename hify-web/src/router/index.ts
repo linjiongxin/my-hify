@@ -74,6 +74,12 @@ const router = createRouter({
       component: () => import('../views/workflow/WorkflowEditor.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/workflow-instances',
+      name: 'workflow-instances',
+      component: () => import('../views/workflow/WorkflowInstanceList.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 

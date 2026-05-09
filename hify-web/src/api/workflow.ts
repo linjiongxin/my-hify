@@ -127,15 +127,32 @@ export function saveWorkflowEdges(id: number | string, edges: WorkflowEdgeDTO[])
 }
 
 export function startWorkflowInstance(data: WorkflowStartRequest): Promise<string> {
-  return post('/workflow/instance', data)
+  return post('/workflow/instances', data)
 }
 
 export function getWorkflowInstance(instanceId: string): Promise<WorkflowInstanceDTO> {
-  return get(`/workflow/instance/${instanceId}`)
+  return get(`/workflow/instances/${instanceId}`)
 }
 
 export function getPendingApprovals(instanceId: string): Promise<WorkflowApprovalDTO[]> {
-  return get(`/workflow/instance/${instanceId}/pending-approvals`)
+  return get(`/workflow/instances/${instanceId}/pending-approvals`)
+}
+
+export function getWorkflowNodeExecutions(instanceId: string | number): Promise<WorkflowNodeExecutionDTO[]> {
+  return get(`/workflow/instances/${instanceId}/node-executions`)
+}
+
+export interface WorkflowNodeExecutionDTO {
+  id: number
+  executionId: number
+  nodeId: string
+  nodeType: string
+  status: 'running' | 'completed' | 'failed'
+  inputJson?: string
+  outputJson?: string
+  errorMsg?: string
+  startedAt?: string
+  endedAt?: string
 }
 
 export function approveApproval(id: number, remark?: string): Promise<void> {
@@ -144,4 +161,20 @@ export function approveApproval(id: number, remark?: string): Promise<void> {
 
 export function rejectApproval(id: number, remark?: string): Promise<void> {
   return post(`/workflow/approval/${id}/reject`, null, { params: { remark } })
+}
+
+export interface InstanceQueryParams extends HifyPageParams {
+  workflowId?: number | string
+  status?: InstanceStatus
+}
+
+export function getWorkflowInstancePage(params: InstanceQueryParams): Promise<PageResult<WorkflowInstanceDTO>> {
+  return get('/workflow/instances', {
+    params: {
+      page: params.current,
+      pageSize: params.size,
+      workflowId: params.workflowId,
+      status: params.status,
+    },
+  })
 }

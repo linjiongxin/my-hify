@@ -212,7 +212,7 @@ GET /api/workflow/{id}/edges
 
 #### 1. 启动工作流
 ```http
-POST /api/workflow/instance
+POST /api/workflow/instances
 Content-Type: application/json
 ```
 
@@ -237,7 +237,7 @@ Content-Type: application/json
 
 #### 2. 查询实例状态
 ```http
-GET /api/workflow/instance/{instanceId}
+GET /api/workflow/instances/{instanceId}
 ```
 
 **响应示例**：
@@ -277,8 +277,47 @@ POST /api/workflow/approval/{id}/reject?remark=不符合退款条件
 
 #### 3. 查询待审批列表
 ```http
-GET /api/workflow/instance/{instanceId}/pending-approvals
+GET /api/workflow/instances/{instanceId}/pending-approvals
 ```
+
+---
+
+#### 4. 查询实例节点执行记录
+```http
+GET /api/workflow/instances/{instanceId}/node-executions
+```
+
+**响应示例**：
+```json
+[
+  {
+    "id": 1,
+    "executionId": 100,
+    "nodeId": "node_start",
+    "nodeType": "START",
+    "status": "completed",
+    "inputJson": "{\"input\":\"hello\"}",
+    "outputJson": "{\"output\":\"world\"}",
+    "errorMsg": null,
+    "startedAt": "2026-05-08T14:00:00",
+    "endedAt": "2026-05-08T14:00:01"
+  },
+  {
+    "id": 2,
+    "executionId": 100,
+    "nodeId": "node_llm",
+    "nodeType": "LLM",
+    "status": "failed",
+    "inputJson": "{\"prompt\":\"...\"}",
+    "outputJson": null,
+    "errorMsg": "LLM timeout",
+    "startedAt": "2026-05-08T14:00:02",
+    "endedAt": "2026-05-08T14:00:32"
+  }
+]
+```
+
+> 记录按 `startedAt` 升序返回，即节点实际执行顺序。
 
 ---
 

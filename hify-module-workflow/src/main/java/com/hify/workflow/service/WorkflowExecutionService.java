@@ -47,6 +47,9 @@ public class WorkflowExecutionService implements WorkflowApi {
     private WorkflowApprovalMapper workflowApprovalMapper;
 
     @Autowired
+    private WorkflowNodeExecutionMapper workflowNodeExecutionMapper;
+
+    @Autowired
     private WorkflowEngine workflowEngine;
 
     @Override
@@ -149,6 +152,29 @@ public class WorkflowExecutionService implements WorkflowApi {
             return null;
         }
         return toInstanceDTO(instance);
+    }
+
+    @Override
+    public PageResult<WorkflowInstanceDTO> listInstances(WorkflowApi.InstanceQueryDTO query) {
+        LambdaQueryWrapper<WorkflowInstance> wrapper = new LambdaQueryWrapper<>();
+        if (query.getWorkflowId() != null) {
+            wrapper.eq(WorkflowInstance::getWorkflowId, query.getWorkflowId());
+        }
+        if (query.getStatus() != null && !query.getStatus().isEmpty()) {
+            wrapper.eq(WorkflowInstance::getStatus, query.getStatus());
+        }
+        wrapper.orderByDesc(WorkflowInstance::getStartedAt);
+
+        IPage<WorkflowInstance> page = workflowInstanceMapper.selectPage(
+                new Page<>(query.getPage(), query.getPageSize()),
+                wrapper
+        );
+
+        List<WorkflowInstanceDTO> records = page.getRecords().stream()
+                .map(this::toInstanceDTO)
+                .collect(Collectors.toList());
+
+        return PageResult.of(records, page.getCurrent(), page.getSize(), page.getTotal());
     }
 
     @Override
@@ -268,6 +294,17 @@ public class WorkflowExecutionService implements WorkflowApi {
         return approvals.stream().map(this::toApprovalDTO).collect(Collectors.toList());
     }
 
+    @Override
+    public List<WorkflowNodeExecutionDTO> getNodeExecutions(Long instanceId) {
+        List<com.hify.workflow.entity.WorkflowNodeExecution> executions =
+                workflowNodeExecutionMapper.selectList(
+                        new LambdaQueryWrapper<com.hify.workflow.entity.WorkflowNodeExecution>()
+                                .eq(com.hify.workflow.entity.WorkflowNodeExecution::getExecutionId, instanceId)
+                                .orderByAsc(com.hify.workflow.entity.WorkflowNodeExecution::getStartedAt)
+                );
+        return executions.stream().map(this::toNodeExecutionDTO).collect(Collectors.toList());
+    }
+
     private WorkflowApprovalDTO toApprovalDTO(WorkflowApproval approval) {
         WorkflowApprovalDTO dto = new WorkflowApprovalDTO();
         dto.setId(approval.getId());
@@ -341,6 +378,24 @@ public class WorkflowExecutionService implements WorkflowApi {
         dto.setTargetNode(edge.getTargetNode());
         dto.setCondition(edge.getCondition());
         dto.setEdgeIndex(edge.getEdgeIndex());
+        return dto;
+    }
+
+    /**
+     * 将 WorkflowNodeExecution 实体转换为 DTO
+     */
+    private WorkflowNodeExecutionDTO toNodeExecutionDTO(com.hify.workflow.entity.WorkflowNodeExecution execution) {
+        WorkflowNodeExecutionDTO dto = new WorkflowNodeExecutionDTO();
+        dto.setId(execution.getId());
+        dto.setExecutionId(execution.getExecutionId());
+        dto.setNodeId(execution.getNodeId());
+        dto.setNodeType(execution.getNodeType());
+        dto.setStatus(execution.getStatus());
+        dto.setInputJson(execution.getInputJson());
+        dto.setOutputJson(execution.getOutputJson());
+        dto.setErrorMsg(execution.getErrorMsg());
+        dto.setStartedAt(execution.getStartedAt());
+        dto.setEndedAt(execution.getEndedAt());
         return dto;
     }
 }

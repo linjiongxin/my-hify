@@ -805,13 +805,35 @@ public class ChatMessageService {
                 return "工作流实例不存在";
             }
             if ("completed".equals(instance.getStatus())) {
-                return instance.getContext() != null ? instance.getContext() : "工作流执行完成，无输出";
+                return extractWorkflowReply(instance.getContext());
             }
             if ("failed".equals(instance.getStatus())) {
                 return "工作流执行失败: " + (instance.getErrorMsg() != null ? instance.getErrorMsg() : "未知错误");
             }
         }
         return "工作流执行超时";
+    }
+
+    /**
+     * 从工作流 context 中提取最终回复。优先取 reply 字段，避免把内部状态 JSON 丢给 LLM。
+     */
+    private String extractWorkflowReply(String contextJson) {
+        if (contextJson == null || contextJson.isEmpty()) {
+            return "工作流执行完成，无输出";
+        }
+        try {
+            Map<String, Object> ctx = objectMapper.readValue(contextJson, new TypeReference<>() {
+            });
+            if (ctx.containsKey("reply")) {
+                Object reply = ctx.get("reply");
+                return reply != null ? reply.toString() : "工作流执行完成，无输出";
+            }
+            return contextJson;
+        } catch (Exception e) {
+            log.warn("解析工作流 context 失败，返回原始内容: {}",
+                    contextJson.substring(0, Math.min(100, contextJson.length())));
+            return contextJson;
+        }
     }
 
     private void finalizeAssistantMessage(ChatMessage assistantMsg, String fullContent,

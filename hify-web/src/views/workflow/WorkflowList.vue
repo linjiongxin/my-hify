@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, EditPen, Delete, Share } from '@element-plus/icons-vue'
+import { Plus, EditPen, Delete, Share, Timer } from '@element-plus/icons-vue'
 import HifyTable from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
@@ -58,7 +58,7 @@ const columns = [
   { prop: 'status', label: '状态', width: 100, align: 'center' as const, slot: 'status' },
   { prop: 'version', label: '版本', width: 80, align: 'center' as const },
   { prop: 'createdAt', label: '创建时间', width: 180, align: 'center' as const, formatter: (_row: any, _col: any, val: unknown) => formatDateTime(val) },
-  { label: '操作', width: 220, align: 'center' as const, slot: 'action' },
+  { label: '操作', width: 300, align: 'center' as const, slot: 'action' },
 ]
 
 const rules: FormRules = {
@@ -92,6 +92,12 @@ function handleEdit(row: Workflow) {
 function handleDesign(row: Workflow) {
   if (row.id) {
     router.push(`/workflows/${row.id}/edit`)
+  }
+}
+
+function handleRecords(row: Workflow) {
+  if (row.id) {
+    router.push({ path: '/workflow-instances', query: { workflowId: String(row.id) } })
   }
 }
 
@@ -146,6 +152,7 @@ async function handleSubmit(data: Workflow, isEdit: boolean) {
       <template #action="{ row }">
         <el-button :icon="EditPen" type="primary" text @click="handleEdit(row)">编辑</el-button>
         <el-button :icon="Share" type="success" text @click="handleDesign(row)">编排</el-button>
+        <el-button :icon="Timer" type="info" text @click="handleRecords(row)">执行记录</el-button>
         <el-button :icon="Delete" type="danger" text @click="handleDelete(row)">删除</el-button>
       </template>
     </HifyTable>
