@@ -132,7 +132,8 @@ public class AliEmbeddingService implements EmbeddingService {
         }
     }
 
-    public int getEmbeddingDim() {
+    @Override
+    public int getDimension() {
         return EMBEDDING_DIM;
     }
 }

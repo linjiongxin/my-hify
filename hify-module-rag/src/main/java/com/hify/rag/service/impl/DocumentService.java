@@ -241,6 +241,9 @@ public class DocumentService implements DocumentApi {
             // 5. 批量向量化
             List<float[]> embeddings = embeddingService.batchEmbed(chunks);
 
+            // 根据模型获取向量维度
+            int dim = embeddingServiceFactory.getDimension(kb.getEmbeddingModel());
+
             // 6. 构建 chunk 实体列表
             List<DocumentChunk> chunkEntities = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
@@ -248,7 +251,7 @@ public class DocumentService implements DocumentApi {
                 chunk.setKbId(doc.getKbId());
                 chunk.setDocumentId(doc.getId());
                 chunk.setContent(chunks.get(i));
-                chunk.setEmbedding(vectorToString(embeddings.get(i)));
+                chunk.setEmbedding(vectorToString(embeddings.get(i), dim));
                 chunk.setChunkIndex(i);
                 chunk.setEnabled(true);
                 chunkEntities.add(chunk);
@@ -278,14 +281,12 @@ public class DocumentService implements DocumentApi {
         return fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
     }
 
-    private static final int VECTOR_DIM = 1536;
-
-    private String vectorToString(float[] vector) {
+    private String vectorToString(float[] vector, int dim) {
         if (vector == null || vector.length == 0) {
             return "[]";
         }
         StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < VECTOR_DIM; i++) {
+        for (int i = 0; i < dim; i++) {
             if (i > 0) sb.append(",");
             sb.append(i < vector.length ? vector[i] : 0.0f);
         }

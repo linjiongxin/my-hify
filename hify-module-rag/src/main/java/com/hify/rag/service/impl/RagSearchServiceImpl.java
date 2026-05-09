@@ -48,12 +48,20 @@ public class RagSearchServiceImpl implements RagSearchService, RagSearchApi {
 
             // 2. Query 向量化
             float[] queryEmbedding = embeddingService.embed(query);
-            String embeddingStr = vectorToString(queryEmbedding);
+            int dim = embeddingServiceFactory.getDimension(kb.getEmbeddingModel());
+            String embeddingStr = vectorToString(queryEmbedding, dim);
 
             // 3. 向量检索（使用 pgvector 的 <=> 运算符）
             // 多取候选，确保长内容有机会进入结果池
             List<ChunkSearchVO> chunks = documentChunkMapper.searchSimilarInKb(
                     embeddingStr, kbId, topK * 20);
+
+            log.info("RAG raw candidates: kbId={}, query='{}', candidateCount={}, chunks={}",
+                    kbId, query, chunks.size(),
+                    chunks.stream().map(c -> String.format("[sim=%.4f, len=%d, content=%s]",
+                            c.getSimilarity(), c.getContent() != null ? c.getContent().length() : 0,
+                            c.getContent() != null ? c.getContent().substring(0, Math.min(30, c.getContent().length())) : "null"))
+                            .collect(Collectors.toList()));
 
             // 4. 过滤 + 去重
             // 注：不过滤短内容，因为标题 chunk 虽短但语义匹配度高，
@@ -91,14 +99,12 @@ public class RagSearchServiceImpl implements RagSearchService, RagSearchApi {
         }
     }
 
-    private static final int VECTOR_DIM = 1536;
-
-    private String vectorToString(float[] vector) {
+    private String vectorToString(float[] vector, int dim) {
         if (vector == null || vector.length == 0) {
             return "[]";
         }
         StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < VECTOR_DIM; i++) {
+        for (int i = 0; i < dim; i++) {
             if (i > 0) sb.append(",");
             sb.append(i < vector.length ? vector[i] : 0.0f);
         }

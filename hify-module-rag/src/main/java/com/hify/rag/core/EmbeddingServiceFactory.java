@@ -22,6 +22,13 @@ public class EmbeddingServiceFactory {
     }
 
     /**
+     * 根据模型名称获取向量维度
+     */
+    public int getDimension(String modelName) {
+        return getService(modelName).getDimension();
+    }
+
+    /**
      * 根据模型名称获取对应的 Embedding 服务
      */
     public EmbeddingService getService(String modelName) {

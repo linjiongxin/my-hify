@@ -93,7 +93,8 @@ public class OllamaEmbeddingService implements EmbeddingService {
         return results;
     }
 
-    public int getEmbeddingDim() {
+    @Override
+    public int getDimension() {
         return EMBEDDING_DIM;
     }
 }

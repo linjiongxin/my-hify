@@ -1,7 +1,9 @@
 package com.hify.rag.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.hify.common.web.entity.base.BaseEntity;
+import com.hify.common.web.handler.JsonbStringTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -33,6 +35,7 @@ public class RagRetrievalLog extends BaseEntity {
     /**
      * 返回的 top chunks（JSONB）
      */
+    @TableField(typeHandler = JsonbStringTypeHandler.class)
     private String topChunks;
 
     /**

@@ -330,7 +330,7 @@ CREATE TABLE IF NOT EXISTS document_chunk (
     kb_id BIGINT NOT NULL,
     document_id BIGINT NOT NULL,
     content TEXT NOT NULL,
-    embedding VECTOR(1536),
+    embedding VECTOR(768),
     chunk_index INT NOT NULL DEFAULT 0,
     meta_json JSONB,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
