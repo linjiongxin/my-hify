@@ -217,7 +217,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
                 }
                 map.put("content", parts);
             } else {
-                map.put("content", m.getContent());
+                map.put("content", m.getContent() != null ? m.getContent() : "");
             }
 
             // tool_calls (assistant)

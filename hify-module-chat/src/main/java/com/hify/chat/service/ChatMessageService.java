@@ -804,10 +804,10 @@ public class ChatMessageService {
             if (instance == null) {
                 return "工作流实例不存在";
             }
-            if ("completed".equals(instance.getStatus())) {
+            if ("COMPLETED".equalsIgnoreCase(instance.getStatus())) {
                 return extractWorkflowReply(instance.getContext());
             }
-            if ("failed".equals(instance.getStatus())) {
+            if ("FAILED".equalsIgnoreCase(instance.getStatus())) {
                 return "工作流执行失败: " + (instance.getErrorMsg() != null ? instance.getErrorMsg() : "未知错误");
             }
         }
