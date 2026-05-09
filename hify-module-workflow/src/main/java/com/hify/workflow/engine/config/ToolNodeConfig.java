@@ -9,5 +9,6 @@ public record ToolNodeConfig(
         String toolName,
         Map<String, Object> params,
         String outputVar,
-        String errorBranch
+        String errorBranch,
+        String mcpServerUrl
 ) implements NodeConfig {}

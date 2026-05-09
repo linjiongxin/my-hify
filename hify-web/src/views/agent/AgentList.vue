@@ -28,6 +28,13 @@ import {
 } from '@/api/agent'
 import { getAllEnabledModels } from '@/api/model'
 import { getWorkflowPage } from '@/api/workflow'
+import {
+  getMcpServerList,
+  getAgentMcpServers,
+  bindAgentMcpServers,
+  unbindAgentMcpServer,
+  type McpServer,
+} from '@/api/mcp'
 
 const modelOptions = ref<{ label: string; value: string }[]>([])
 const workflowOptions = ref<{ label: string; value: number }[]>([])
@@ -82,7 +89,7 @@ interface HifyTableExpose {
   refresh: () => void
 }
 interface HifyFormDialogExpose {
-  open: (data?: any) => void
+  open: (data?: any, editing?: boolean) => void
   close: () => void
   finish: () => void
 }
@@ -112,6 +119,12 @@ const kbForm = ref<Partial<AgentKbBinding>>({
   similarityThreshold: 0.5,
   enabled: true,
 })
+
+// MCP Server 绑定相关
+const mcpList = ref<McpServer[]>([])
+const mcpOptions = ref<McpServer[]>([])
+const mcpDialogVisible = ref(false)
+const mcpSelectedIds = ref<number[]>([])
 
 async function loadKbOptions() {
   kbOptions.value = await getKnowledgeBaseOptions()
@@ -190,24 +203,67 @@ async function handleUnbindKb(row: AgentKbBinding) {
   await loadKbBindings(currentAgentId.value)
 }
 
+// MCP Server 绑定相关函数
+async function loadMcpOptions() {
+  mcpOptions.value = await getMcpServerList(true)
+}
+
+async function loadMcpBindings(agentId: number) {
+  const serverIds = await getAgentMcpServers(agentId)
+  await loadMcpOptions()
+  mcpList.value = mcpOptions.value.filter(s => s.id !== undefined && serverIds.includes(s.id))
+}
+
+function handleOpenMcpDialog() {
+  mcpSelectedIds.value = mcpList.value.map(s => s.id!).filter(Boolean)
+  mcpDialogVisible.value = true
+}
+
+async function handleSaveMcp() {
+  if (!currentAgentId.value) {
+    ElMessage.warning('请先保存 Agent 基本信息')
+    return
+  }
+  await bindAgentMcpServers(currentAgentId.value, mcpSelectedIds.value)
+  ElMessage.success('绑定已更新')
+  mcpDialogVisible.value = false
+  await loadMcpBindings(currentAgentId.value)
+}
+
+async function handleUnbindMcp(row: McpServer) {
+  try {
+    await ElMessageBox.confirm('确定解绑该 MCP Server？', '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  if (!currentAgentId.value || !row.id) return
+  await unbindAgentMcpServer(currentAgentId.value, row.id)
+  ElMessage.success('解绑成功')
+  await loadMcpBindings(currentAgentId.value)
+}
+
 async function fetchApi(params: PageParams): Promise<PageResult<Agent>> {
   return getAgentPage(params)
 }
 
 function handleAdd() {
   toolList.value = []
+  kbList.value = []
+  mcpList.value = []
   dialogRef.value?.open({ enabled: true, temperature: 0.7, maxTokens: 2048, topP: 1.0, executionMode: 'react' }, false)
 }
 
 async function handleEdit(row: Agent) {
   toolList.value = []
   kbList.value = []
+  mcpList.value = []
   const detail = await getAgentDetail(row.id)
   currentAgentId.value = row.id
   const tools = await getAgentTools(row.id)
   toolList.value = tools || []
   await loadKbOptions()
   await loadKbBindings(row.id)
+  await loadMcpBindings(row.id)
   await loadWorkflowOptions()
   dialogRef.value?.open({ ...detail, id: row.id })
 }
@@ -460,6 +516,37 @@ async function handleSaveTools() {
               </el-table>
             </div>
           </el-tab-pane>
+
+          <el-tab-pane label="MCP 服务器">
+            <div class="tool-binding">
+              <div class="tool-header">
+                <span class="tool-title">已绑定 MCP Server</span>
+                <el-button type="primary" size="small" @click="handleOpenMcpDialog">添加 MCP Server</el-button>
+              </div>
+
+              <el-table :data="mcpList" empty-text="暂未绑定 MCP Server" style="width: 100%">
+                <el-table-column prop="name" label="名称" min-width="140" />
+                <el-table-column prop="code" label="编码" width="120" />
+                <el-table-column prop="transportType" label="传输类型" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag size="small">{{ row.transportType?.toUpperCase() }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="状态" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
+                      {{ row.enabled ? '启用' : '禁用' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-button type="danger" text size="small" @click="handleUnbindMcp(row)">解绑</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-tab-pane>
         </el-tabs>
       </template>
     </HifyFormDialog>
@@ -560,6 +647,34 @@ async function handleSaveTools() {
       <template #footer>
         <el-button @click="kbDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSaveKb">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- MCP Server 绑定弹窗 -->
+    <el-dialog
+      v-model="mcpDialogVisible"
+      title="绑定 MCP Server"
+      width="480px"
+      align-center
+      destroy-on-close
+    >
+      <el-select
+        v-model="mcpSelectedIds"
+        multiple
+        placeholder="请选择要绑定的 MCP Server"
+        style="width: 100%"
+      >
+        <el-option
+          v-for="server in mcpOptions"
+          :key="server.id"
+          :label="server.name"
+          :value="server.id!"
+        />
+      </el-select>
+
+      <template #footer>
+        <el-button @click="mcpDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveMcp">保存</el-button>
       </template>
     </el-dialog>
   </div>

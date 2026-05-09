@@ -69,7 +69,7 @@ interface HifyTableExpose {
   refresh: () => void
 }
 interface HifyFormDialogExpose {
-  open: (data?: any) => void
+  open: (data?: any, editing?: boolean) => void
   close: () => void
   finish: () => void
 }

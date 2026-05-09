@@ -15,6 +15,11 @@ import com.hify.common.core.enums.ResultCode;
 import com.hify.common.core.exception.BizException;
 import com.hify.common.web.entity.PageParam;
 import com.hify.common.web.entity.PageResult;
+import com.hify.agent.api.dto.AgentDTO;
+import com.hify.agent.entity.AgentMcpBinding;
+import com.hify.mcp.api.McpApi;
+import com.hify.mcp.api.dto.McpServerDTO;
+import com.hify.mcp.api.dto.McpToolDTO;
 import com.hify.model.api.ModelConfigApi;
 import com.hify.model.api.dto.ModelConfigDTO;
 import org.junit.jupiter.api.Test;
@@ -26,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,6 +52,9 @@ class AgentServiceImplTest {
 
     @Mock
     private ModelConfigApi modelConfigApi;
+
+    @Mock
+    private McpApi mcpApi;
 
     @InjectMocks
     private AgentServiceImpl agentService;
@@ -417,5 +426,46 @@ class AgentServiceImplTest {
         verify(agentMapper).updateById(captor.capture());
         assertThat(captor.getValue().getWorkflowId()).isEqualTo(20L);
         assertThat(captor.getValue().getExecutionMode()).isEqualTo("workflow");
+    }
+
+    @Test
+    void shouldLoadMcpTools_whenGetAgentById() {
+        Agent existingAgent = new Agent();
+        existingAgent.setId(1L);
+        existingAgent.setName("MCP Agent");
+        existingAgent.setModelId("gpt-4o");
+        existingAgent.setEnabled(true);
+
+        AgentMcpBinding binding = new AgentMcpBinding();
+        binding.setAgentId(1L);
+        binding.setMcpServerId(10L);
+        binding.setEnabled(true);
+
+        McpServerDTO server = new McpServerDTO();
+        server.setId(10L);
+        server.setName("Test MCP Server");
+        server.setBaseUrl("http://localhost:3000/sse");
+        server.setEnabled(true);
+
+        McpToolDTO mcpTool = new McpToolDTO();
+        mcpTool.setName("query_order");
+        mcpTool.setDescription("查询订单");
+        mcpTool.setEnabled(true);
+        mcpTool.setSchemaJson(Map.of("type", "object", "properties", Map.of("orderNo", Map.of("type", "string"))));
+
+        when(agentMapper.selectById(1L)).thenReturn(existingAgent);
+        when(agentToolMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+        when(agentMcpBindingMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(binding));
+        when(mcpApi.getServerById(10L)).thenReturn(server);
+        when(mcpApi.listToolsByServerId(10L)).thenReturn(List.of(mcpTool));
+
+        AgentDTO dto = agentService.getAgentById(1L);
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.getTools()).hasSize(1);
+        assertThat(dto.getTools().get(0).getToolType()).isEqualTo("mcp");
+        assertThat(dto.getTools().get(0).getToolName()).isEqualTo("query_order");
+        assertThat(dto.getTools().get(0).getConfigJson()).containsKey("serverUrl");
+        assertThat(dto.getTools().get(0).getConfigJson().get("serverUrl")).isEqualTo("http://localhost:3000/sse");
     }
 }

@@ -17,6 +17,7 @@ import com.hify.chat.vo.ChatMessageVO;
 import com.hify.common.core.enums.ResultCode;
 import com.hify.common.core.exception.BizException;
 import com.hify.common.core.util.LlmOutputCleaner;
+import com.hify.mcp.api.McpApi;
 import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
 import com.hify.model.api.dto.LlmChatResponse;
@@ -62,6 +63,7 @@ public class ChatMessageService {
     private final AgentKnowledgeBaseApi agentKnowledgeBaseApi;
     private final RagSearchApi ragSearchApi;
     private final WorkflowApi workflowApi;
+    private final McpApi mcpApi;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -396,6 +398,16 @@ public class ChatMessageService {
                     }
                 }
                 sb.append("\n");
+            } else if ("mcp".equals(tool.getToolType())) {
+                sb.append("- ").append(tool.getToolName());
+                @SuppressWarnings("unchecked")
+                String desc = tool.getConfigJson() != null
+                        ? (String) tool.getConfigJson().get("description")
+                        : null;
+                if (desc != null && !desc.isEmpty()) {
+                    sb.append("：").append(desc);
+                }
+                sb.append("\n");
             }
         }
         sb.append("\n使用规则：\n");
@@ -556,9 +568,36 @@ public class ChatMessageService {
                 if (def != null) {
                     defs.add(def);
                 }
+            } else if ("mcp".equals(tool.getToolType())) {
+                LlmToolDefinition def = buildMcpToolDefinition(tool);
+                if (def != null) {
+                    defs.add(def);
+                }
             }
         }
         return defs.isEmpty() ? null : defs;
+    }
+
+    @SuppressWarnings("unchecked")
+    private LlmToolDefinition buildMcpToolDefinition(AgentToolDTO tool) {
+        Map<String, Object> config = tool.getConfigJson();
+        if (config == null) {
+            log.warn("MCP 工具缺少 configJson: toolName={}", tool.getToolName());
+            return null;
+        }
+        String description = config.get("description") != null ? config.get("description").toString() : "";
+        Map<String, Object> schema = config.get("schema") instanceof Map
+                ? (Map<String, Object>) config.get("schema")
+                : Map.of("type", "object", "properties", Map.of());
+        String toolName = sanitizeToolName(tool.getToolName());
+        return LlmToolDefinition.builder()
+                .type("function")
+                .function(LlmToolDefinition.Function.builder()
+                        .name(toolName)
+                        .description(description)
+                        .parameters(schema)
+                        .build())
+                .build();
     }
 
     private LlmToolDefinition buildWorkflowToolDefinition(AgentToolDTO tool) {
@@ -610,11 +649,21 @@ public class ChatMessageService {
 
             // 提取所有 ${var} 和 {{var}} 占位符中的变量名
             java.util.Set<String> varNames = new java.util.LinkedHashSet<>();
+            java.util.Set<String> outputVars = new java.util.LinkedHashSet<>();
             java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{([^}]+)}");
             java.util.regex.Pattern pattern2 = java.util.regex.Pattern.compile("\\{\\{([^}]+)}}");
             for (com.hify.workflow.api.dto.WorkflowNodeDTO node : nodes) {
                 if (node.getConfig() == null || node.getConfig().isEmpty()) {
                     continue;
+                }
+                // 收集 outputVar（输出变量不应作为输入参数）
+                try {
+                    Map<String, Object> config = objectMapper.readValue(node.getConfig(), new TypeReference<>() {});
+                    if (config.get("outputVar") != null) {
+                        outputVars.add(config.get("outputVar").toString());
+                    }
+                } catch (Exception e) {
+                    // ignore parse error
                 }
                 java.util.regex.Matcher matcher = pattern.matcher(node.getConfig());
                 while (matcher.find()) {
@@ -636,6 +685,9 @@ public class ChatMessageService {
                     }
                 }
             }
+
+            // 移除输出变量，避免将内部状态暴露为必填参数
+            varNames.removeAll(outputVars);
 
             if (varNames.isEmpty()) {
                 return defaultParameters();
@@ -686,11 +738,21 @@ public class ChatMessageService {
             List<com.hify.workflow.api.dto.WorkflowNodeDTO> nodes = workflowApi.getNodes(workflow.getId());
             if (nodes != null && !nodes.isEmpty()) {
                 java.util.Set<String> varNames = new java.util.LinkedHashSet<>();
+                java.util.Set<String> outputVars = new java.util.LinkedHashSet<>();
                 java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{([^}]+)}");
                 java.util.regex.Pattern pattern2 = java.util.regex.Pattern.compile("\\{\\{([^}]+)}}");
                 for (com.hify.workflow.api.dto.WorkflowNodeDTO node : nodes) {
                     if (node.getConfig() == null || node.getConfig().isEmpty()) {
                         continue;
+                    }
+                    // 收集 outputVar
+                    try {
+                        Map<String, Object> config = objectMapper.readValue(node.getConfig(), new TypeReference<>() {});
+                        if (config.get("outputVar") != null) {
+                            outputVars.add(config.get("outputVar").toString());
+                        }
+                    } catch (Exception e) {
+                        // ignore
                     }
                     java.util.regex.Matcher matcher = pattern.matcher(node.getConfig());
                     while (matcher.find()) {
@@ -710,6 +772,8 @@ public class ChatMessageService {
                         }
                     }
                 }
+                // 排除输出变量
+                varNames.removeAll(outputVars);
                 if (!varNames.isEmpty()) {
                     sb.append("\n调用此工具时需要提供以下参数: ")
                       .append(String.join(", ", varNames));
@@ -781,6 +845,31 @@ public class ChatMessageService {
                 }
             }
             return invokeWorkflowSync(workflowId, inputs);
+        } else if ("mcp".equals(matched.getToolType())) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> config = matched.getConfigJson();
+            if (config == null) {
+                return "MCP 工具配置缺失";
+            }
+            String serverUrl = config.get("serverUrl") != null ? config.get("serverUrl").toString() : null;
+            if (serverUrl == null || serverUrl.isBlank()) {
+                return "MCP Server URL 未配置";
+            }
+            Map<String, Object> args = new HashMap<>();
+            if (arguments != null && !arguments.isEmpty()) {
+                try {
+                    args = objectMapper.readValue(arguments, new TypeReference<>() {});
+                } catch (Exception e) {
+                    log.warn("Failed to parse MCP tool arguments: {}", arguments);
+                    args.put("input", arguments);
+                }
+            }
+            try {
+                return mcpApi.callTool(serverUrl, matched.getToolName(), args);
+            } catch (Exception e) {
+                log.error("MCP 工具调用失败: serverUrl={}, toolName={}", serverUrl, matched.getToolName(), e);
+                return "MCP 工具调用失败: " + e.getMessage();
+            }
         }
         return "不支持的工具类型: " + matched.getToolType();
     }

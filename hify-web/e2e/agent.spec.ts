@@ -187,3 +187,107 @@ test.describe('Agent 表单验证', () => {
     await expect(page.locator('.el-form-item__error').first()).toContainText('请输入名称')
   })
 })
+
+// ===== MCP Server 绑定 =====
+
+// 通过 API 创建 MCP Server
+async function createTestMcpServerViaAPI(page: Page, name: string, code: string): Promise<string> {
+  const token = await getAuthToken(page)
+  const response = await page.request.post(`${API_BASE}/mcp-server`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    data: {
+      name,
+      code,
+      transportType: 'sse',
+      baseUrl: 'http://localhost:3000/sse',
+      enabled: true,
+    },
+  })
+  const body = await response.json()
+  return body.data
+}
+
+// 通过 API 删除 MCP Server
+async function deleteTestMcpServerByName(page: Page, name: string): Promise<void> {
+  const token = await getAuthToken(page)
+  const response = await page.request.get(`${API_BASE}/mcp-server?pageNum=1&pageSize=100`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  })
+  const data = await response.json()
+  const server = data.data?.records?.find((r: any) => r.name === name)
+  if (server) {
+    await page.request.delete(`${API_BASE}/mcp-server/${server.id}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+  }
+}
+
+test.describe('Agent MCP Server 绑定', () => {
+  test('绑定和解绑 MCP Server', async ({ page }) => {
+    const agentName = `E2E_Agent_MCP_${Date.now()}`
+    const mcpName = `E2E_MCP_Bind_${Date.now()}`
+    const mcpCode = `bind_${Date.now()}`
+
+    await loginAndNavigate(page, `${UI_BASE}/agents`)
+
+    // 创建 Agent 和 MCP Server
+    const agentId = await createTestAgentViaAPI(page, agentName)
+    const mcpId = await createTestMcpServerViaAPI(page, mcpName, mcpCode)
+
+    // 刷新页面并找到 Agent
+    await reloadAndWaitForAgentData(page, agentName)
+
+    // 打开编辑弹窗
+    const row = page.locator(`.el-table__body tr:has-text("${agentName}")`)
+    await row.locator('button:has-text("编辑")').click()
+    await page.waitForTimeout(800)
+
+    // 切换到 MCP 服务器 tab
+    await page.locator('.el-tabs__item:has-text("MCP 服务器")').click()
+    await page.waitForTimeout(300)
+
+    // 点击添加 MCP Server
+    await page.locator('button:has-text("添加 MCP Server")').click()
+    await page.waitForTimeout(300)
+
+    // 在弹窗中选择 MCP Server
+    const mcpDialog = page.locator('.el-dialog').filter({ has: page.locator('.el-dialog__title:has-text("绑定 MCP Server")') })
+    await mcpDialog.locator('.el-select').click()
+    await page.waitForTimeout(200)
+    await page.locator(`.el-select-dropdown__item:has-text("${mcpName}")`).click()
+    await page.waitForTimeout(300)
+    // 按 Escape 关闭下拉框，避免遮挡保存按钮
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(200)
+
+    // 保存绑定
+    await mcpDialog.locator('.el-dialog__footer button.el-button--primary').click()
+    await page.waitForTimeout(800)
+
+    // 验证绑定出现在表格中
+    await expect(page.locator(`.el-table__body tr:has-text("${mcpName}")`)).toBeVisible()
+
+    // 解绑
+    const mcpRow = page.locator(`.el-table__body tr:has-text("${mcpName}")`)
+    await mcpRow.locator('button:has-text("解绑")').click()
+    await page.waitForTimeout(300)
+    await page.locator('.el-message-box__btns button.el-button--primary').click()
+    await page.waitForTimeout(800)
+
+    // 验证已解绑（弹窗关闭后重新打开验证）
+    await page.locator('.el-dialog__headerbtn').click()
+    await page.waitForTimeout(300)
+    await row.locator('button:has-text("编辑")').click()
+    await page.waitForTimeout(500)
+    await page.locator('.el-tabs__item:has-text("MCP 服务器")').click()
+    await page.waitForTimeout(300)
+    await expect(page.locator(`.el-table__body tr:has-text("${mcpName}")`)).not.toBeVisible()
+
+    // 清理
+    await deleteTestAgentByName(page, agentName)
+    await deleteTestMcpServerByName(page, mcpName)
+  })
+})

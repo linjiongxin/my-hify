@@ -1,20 +1,25 @@
 package com.hify.workflow.engine.executor;
 
+import com.hify.mcp.api.McpApi;
 import com.hify.workflow.engine.NodeResult;
 import com.hify.workflow.engine.config.NodeConfig;
 import com.hify.workflow.engine.config.ToolNodeConfig;
 import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.entity.WorkflowNode;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
 /**
- * TOOL 节点执行器（v2）
- * <p>TODO: MCP 模块实现后替换为真实调用</p>
+ * TOOL 节点执行器
+ * <p>调用 MCP 外部工具</p>
  */
 @Component
+@RequiredArgsConstructor
 public class ToolNodeExecutor implements NodeExecutor {
+
+    private final McpApi mcpApi;
 
     @Override
     public String nodeType() {
@@ -30,18 +35,21 @@ public class ToolNodeExecutor implements NodeExecutor {
                 return NodeResult.failure("Tool node config missing toolName");
             }
 
+            if (toolConfig.mcpServerUrl() == null || toolConfig.mcpServerUrl().isBlank()) {
+                return NodeResult.failure("Tool node config missing mcpServerUrl");
+            }
+
             // 替换参数中的占位符
             Map<String, Object> resolvedParams = resolveParams(toolConfig.params(), context);
 
-            // TODO: 等待 MCP 模块实现后替换为真实调用
-            Object result = executeTool(toolConfig.toolName(), resolvedParams);
+            String result = mcpApi.callTool(toolConfig.mcpServerUrl(), toolConfig.toolName(), resolvedParams);
 
             if (toolConfig.outputVar() != null && !toolConfig.outputVar().isEmpty()) {
                 context.set(node.getNodeId(), toolConfig.outputVar(), result);
                 context.put(toolConfig.outputVar(), result);
             }
 
-            return NodeResult.success(null);
+            return NodeResult.end();
 
         } catch (Exception e) {
             return NodeResult.failure("Tool execution failed: " + e.getMessage());
@@ -61,9 +69,5 @@ public class ToolNodeExecutor implements NodeExecutor {
             }
         }
         return resolved;
-    }
-
-    private Object executeTool(String toolName, Map<String, Object> params) {
-        throw new UnsupportedOperationException("MCP Tool Executor not yet implemented");
     }
 }

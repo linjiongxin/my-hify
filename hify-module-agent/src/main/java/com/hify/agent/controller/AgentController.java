@@ -109,8 +109,25 @@ public class AgentController {
      * 获取 Agent 绑定的 MCP 服务器
      */
     @GetMapping("/{id}/mcp-servers")
-    public Result<Void> getMcpServers(@PathVariable("id") Long id) {
-        // TODO: MCP 后续实现
+    public Result<List<Long>> getMcpServers(@PathVariable("id") Long id) {
+        return Result.success(agentService.listMcpServerIds(id));
+    }
+
+    /**
+     * 绑定 MCP 服务器
+     */
+    @PostMapping("/{id}/mcp-servers")
+    public Result<Void> bindMcpServers(@PathVariable("id") Long id, @RequestBody List<Long> serverIds) {
+        agentService.bindMcpServers(id, serverIds);
+        return Result.success();
+    }
+
+    /**
+     * 解绑 MCP 服务器
+     */
+    @DeleteMapping("/{id}/mcp-servers/{serverId}")
+    public Result<Void> unbindMcpServer(@PathVariable("id") Long id, @PathVariable("serverId") Long serverId) {
+        agentService.unbindMcpServer(id, serverId);
         return Result.success();
     }
 }

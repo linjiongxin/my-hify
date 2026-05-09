@@ -35,6 +35,11 @@
             <artifactId>hify-module-rag</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-module-mcp</artifactId>
+        </dependency>
+
         <!-- MyBatis Plus -->
         <dependency>
             <groupId>com.baomidou</groupId>

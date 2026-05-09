@@ -4,20 +4,22 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <parent>
         <groupId>com.hify</groupId>
         <artifactId>hify</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>hify-module-mcp</artifactId>
-    <name>hify-module-mcp</name>
-    <description>MCP 工具模块</description>
+    <artifactId>hify-test-mcp-server</artifactId>
+    <name>hify-test-mcp-server</name>
+    <description>Hify 测试 MCP Server（订单/物流/退货场景）</description>
+    <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
-            <groupId>com.hify</groupId>
-            <artifactId>hify-common-web</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
         <!-- MCP Java SDK -->
@@ -26,17 +28,19 @@
             <artifactId>mcp</artifactId>
         </dependency>
 
-        <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>

@@ -80,6 +80,12 @@ const router = createRouter({
       component: () => import('../views/workflow/WorkflowInstanceList.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/mcp-servers',
+      name: 'mcp-servers',
+      component: () => import('../views/mcp/McpServerList.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 

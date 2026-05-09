@@ -23,6 +23,7 @@
         <module>hify-module-workflow</module>
         <module>hify-module-mcp</module>
         <module>hify-server</module>
+        <module>hify-test-mcp-server</module>
     </modules>
 
     <properties>
@@ -59,6 +60,9 @@
 
         <!-- JSON -->
         <jackson.version>2.16.0</jackson.version>
+
+        <!-- MCP Java SDK -->
+        <mcp-java-sdk.version>0.18.0</mcp-java-sdk.version>
 
         <!-- Utilities -->
         <lombok.version>1.18.30</lombok.version>
@@ -223,6 +227,13 @@
                 <groupId>com.google.guava</groupId>
                 <artifactId>guava</artifactId>
                 <version>${guava.version}</version>
+            </dependency>
+
+            <!-- MCP Java SDK -->
+            <dependency>
+                <groupId>io.modelcontextprotocol.sdk</groupId>
+                <artifactId>mcp</artifactId>
+                <version>${mcp-java-sdk.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

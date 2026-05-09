@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { ChatDotRound, Setting, User, Collection, Share, OfficeBuilding, Fold, Expand, ArrowDown } from '@element-plus/icons-vue'
+import { ChatDotRound, Setting, User, Collection, Share, OfficeBuilding, Fold, Expand, ArrowDown, Tools } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const isCollapsed = ref(false)
@@ -13,6 +13,7 @@ const menuItems = [
   { title: 'Agent 管理', icon: User, path: '/agents' },
   { title: '知识库', icon: Collection, path: '/knowledge' },
   { title: '工作流', icon: Share, path: '/workflows' },
+  { title: 'MCP Server', icon: Tools, path: '/mcp-servers' },
 ]
 
 const breadcrumbMap: Record<string, string> = {
@@ -23,6 +24,7 @@ const breadcrumbMap: Record<string, string> = {
   agents: 'Agent 管理',
   knowledge: '知识库',
   workflows: '工作流',
+  'mcp-servers': 'MCP Server',
 }
 
 const breadcrumbs = computed(() => {

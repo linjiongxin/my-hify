@@ -21,6 +21,9 @@ import com.hify.common.core.enums.ResultCode;
 import com.hify.common.core.exception.BizException;
 import com.hify.common.web.entity.PageParam;
 import com.hify.common.web.entity.PageResult;
+import com.hify.mcp.api.McpApi;
+import com.hify.mcp.api.dto.McpServerDTO;
+import com.hify.mcp.api.dto.McpToolDTO;
 import com.hify.model.api.ModelConfigApi;
 import com.hify.model.api.dto.ModelConfigDTO;
 import org.springframework.beans.BeanUtils;
@@ -28,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Agent Service 实现
@@ -42,15 +46,18 @@ public class AgentServiceImpl implements AgentService, AgentApi {
     private final AgentToolMapper agentToolMapper;
     private final AgentMcpBindingMapper agentMcpBindingMapper;
     private final ModelConfigApi modelConfigApi;
+    private final McpApi mcpApi;
 
     public AgentServiceImpl(AgentMapper agentMapper,
                            AgentToolMapper agentToolMapper,
                            AgentMcpBindingMapper agentMcpBindingMapper,
-                           ModelConfigApi modelConfigApi) {
+                           ModelConfigApi modelConfigApi,
+                           McpApi mcpApi) {
         this.agentMapper = agentMapper;
         this.agentToolMapper = agentToolMapper;
         this.agentMcpBindingMapper = agentMcpBindingMapper;
         this.modelConfigApi = modelConfigApi;
+        this.mcpApi = mcpApi;
     }
 
     @Override
@@ -217,16 +224,11 @@ public class AgentServiceImpl implements AgentService, AgentApi {
     @Override
     @Transactional(readOnly = true)
     public AgentDTO getAgentById(Long id) {
-        AgentVO vo = getAgentDetail(id);
-        if (vo == null) {
+        Agent agent = agentMapper.selectById(id);
+        if (agent == null) {
             return null;
         }
-        AgentDTO dto = new AgentDTO();
-        BeanUtils.copyProperties(vo, dto);
-        if (vo.getTools() != null) {
-            dto.setTools(vo.getTools().stream().map(this::toToolDtoFromVo).toList());
-        }
-        return dto;
+        return toDto(agent);
     }
 
     @Override
@@ -241,11 +243,29 @@ public class AgentServiceImpl implements AgentService, AgentApi {
     private AgentDTO toDto(Agent agent) {
         AgentDTO dto = new AgentDTO();
         BeanUtils.copyProperties(agent, dto);
-        // 加载工具列表
+        // 加载 workflow 工具列表
         LambdaQueryWrapper<AgentTool> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AgentTool::getAgentId, agent.getId()).orderByAsc(AgentTool::getSortOrder);
         List<AgentTool> tools = agentToolMapper.selectList(wrapper);
-        dto.setTools(tools.stream().map(this::toToolDto).toList());
+        List<AgentToolDTO> toolDtos = new java.util.ArrayList<>(tools.stream().map(this::toToolDto).toList());
+
+        // 加载 MCP 绑定并混入工具列表
+        LambdaQueryWrapper<AgentMcpBinding> mcpWrapper = new LambdaQueryWrapper<>();
+        mcpWrapper.eq(AgentMcpBinding::getAgentId, agent.getId())
+                .eq(AgentMcpBinding::getEnabled, true);
+        List<AgentMcpBinding> mcpBindings = agentMcpBindingMapper.selectList(mcpWrapper);
+        for (AgentMcpBinding binding : mcpBindings) {
+            McpServerDTO server = mcpApi.getServerById(binding.getMcpServerId());
+            if (server == null || !Boolean.TRUE.equals(server.getEnabled())) {
+                continue;
+            }
+            List<McpToolDTO> mcpTools = mcpApi.listToolsByServerId(binding.getMcpServerId());
+            for (McpToolDTO mcpTool : mcpTools) {
+                toolDtos.add(toMcpToolDto(mcpTool, server));
+            }
+        }
+
+        dto.setTools(toolDtos);
         return dto;
     }
 
@@ -271,5 +291,89 @@ public class AgentServiceImpl implements AgentService, AgentApi {
         AgentToolVO vo = new AgentToolVO();
         BeanUtils.copyProperties(tool, vo);
         return vo;
+    }
+
+    // ===== MCP Server 绑定 =====
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> listMcpServerIds(Long agentId) {
+        LambdaQueryWrapper<AgentMcpBinding> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AgentMcpBinding::getAgentId, agentId)
+                .eq(AgentMcpBinding::getEnabled, true);
+        return agentMcpBindingMapper.selectList(wrapper).stream()
+                .map(AgentMcpBinding::getMcpServerId)
+                .toList();
+    }
+
+    @Override
+    public void bindMcpServers(Long agentId, List<Long> serverIds) {
+        Agent agent = agentMapper.selectById(agentId);
+        if (agent == null) {
+            throw new BizException(ResultCode.DATA_NOT_FOUND, "Agent 不存在");
+        }
+        if (serverIds == null || serverIds.isEmpty()) {
+            return;
+        }
+        for (Long serverId : serverIds) {
+            LambdaQueryWrapper<AgentMcpBinding> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(AgentMcpBinding::getAgentId, agentId)
+                    .eq(AgentMcpBinding::getMcpServerId, serverId);
+            if (agentMcpBindingMapper.selectCount(wrapper) > 0) {
+                continue;
+            }
+            AgentMcpBinding binding = new AgentMcpBinding();
+            binding.setAgentId(agentId);
+            binding.setMcpServerId(serverId);
+            binding.setEnabled(true);
+            agentMcpBindingMapper.insert(binding);
+        }
+    }
+
+    @Override
+    public void unbindMcpServer(Long agentId, Long serverId) {
+        Agent agent = agentMapper.selectById(agentId);
+        if (agent == null) {
+            throw new BizException(ResultCode.DATA_NOT_FOUND, "Agent 不存在");
+        }
+        LambdaQueryWrapper<AgentMcpBinding> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AgentMcpBinding::getAgentId, agentId)
+                .eq(AgentMcpBinding::getMcpServerId, serverId);
+        List<AgentMcpBinding> bindings = agentMcpBindingMapper.selectList(wrapper);
+        for (AgentMcpBinding b : bindings) {
+            agentMcpBindingMapper.deleteById(b.getId());
+        }
+    }
+
+    private AgentToolDTO toMcpToolDto(McpToolDTO tool, McpServerDTO server) {
+        AgentToolDTO dto = new AgentToolDTO();
+        dto.setToolName(sanitizeToolName(tool.getName()));
+        dto.setToolType("mcp");
+        dto.setToolImpl(server.getId() != null ? server.getId().toString() : null);
+        dto.setConfigJson(Map.of(
+                "serverUrl", server.getBaseUrl() != null ? server.getBaseUrl() : "",
+                "schema", tool.getSchemaJson() != null ? tool.getSchemaJson() : Map.of(),
+                "description", tool.getDescription() != null ? tool.getDescription() : ""
+        ));
+        dto.setEnabled(tool.getEnabled());
+        dto.setSortOrder(0);
+        return dto;
+    }
+
+    private String sanitizeToolName(String name) {
+        if (name == null) {
+            return "mcp_tool";
+        }
+        String sanitized = name.replaceAll("[^a-zA-Z0-9_-]", "_");
+        if (sanitized.matches("^\\d.*")) {
+            sanitized = "mcp_" + sanitized;
+        }
+        if (sanitized.length() > 64) {
+            sanitized = sanitized.substring(0, 64);
+        }
+        if (sanitized.isEmpty()) {
+            sanitized = "mcp_tool";
+        }
+        return sanitized;
     }
 }

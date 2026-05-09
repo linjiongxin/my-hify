@@ -24,4 +24,12 @@ public interface AgentService {
     void replaceTools(Long agentId, AgentToolBatchRequest request);
 
     void unbindTool(Long agentId, Long toolId);
+
+    // ===== MCP Server 绑定 =====
+
+    java.util.List<Long> listMcpServerIds(Long agentId);
+
+    void bindMcpServers(Long agentId, java.util.List<Long> serverIds);
+
+    void unbindMcpServer(Long agentId, Long serverId);
 }
