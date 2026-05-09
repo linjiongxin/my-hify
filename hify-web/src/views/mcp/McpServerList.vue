@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Plus, EditPen, Delete, Refresh } from '@element-plus/icons-vue'
+import {
+  Plus, EditPen, Delete, Refresh, Document
+} from '@element-plus/icons-vue'
 import HifyTable from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
@@ -17,8 +19,10 @@ import {
   type McpTransportType,
   type McpServerStatus,
 } from '@/api/mcp'
+import { useRouter } from 'vue-router'
 
 const { confirmDelete } = useConfirm()
+const router = useRouter()
 
 const transportTypeOptions = [
   { label: 'SSE', value: 'sse' },
@@ -172,6 +176,7 @@ async function handleSubmit(data: McpServer & { argsJsonText?: string; envJsonTe
         <p class="page-desc">管理 MCP 外部工具服务器，支持 SSE 和 STDIO 两种传输协议</p>
       </div>
       <div class="page-header-right">
+        <el-button :icon="Document" text @click="router.push('/mcp/call-logs')">调用记录</el-button>
         <el-button :icon="Plus" type="primary" @click="handleAdd">新增 MCP Server</el-button>
       </div>
     </div>

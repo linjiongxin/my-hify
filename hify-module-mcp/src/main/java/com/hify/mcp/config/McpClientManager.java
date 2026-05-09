@@ -1,10 +1,12 @@
 package com.hify.mcp.config;
 
+import com.hify.mcp.service.McpCallRecorder;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -19,22 +21,34 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class McpClientManager {
 
+    private final McpCallRecorder callRecorder;
     private final Map<String, McpSyncClient> clients = new ConcurrentHashMap<>();
 
     /**
      * 调用 MCP 工具
      */
     public String callTool(String serverUrl, String toolName, Map<String, Object> arguments) {
+        long startTime = System.currentTimeMillis();
+        String requestJson = toJson(arguments);
+        Long logId = callRecorder.recordStart(serverUrl, toolName, requestJson);
+
         McpSyncClient client = clients.computeIfAbsent(serverUrl, this::createClient);
         try {
             McpSchema.CallToolResult result = client.callTool(
                     new McpSchema.CallToolRequest(toolName, arguments)
             );
-            return extractResult(result);
+            String response = extractResult(result);
+            long duration = System.currentTimeMillis() - startTime;
+            callRecorder.recordSuccess(logId, response, duration);
+            log.info("MCP call tool: serverUrl={}, toolName={}, duration={}ms, status=success", serverUrl, toolName, duration);
+            return response;
         } catch (Exception e) {
-            log.warn("MCP 工具调用失败，移除缓存 client: serverUrl={}, toolName={}", serverUrl, toolName, e);
+            long duration = System.currentTimeMillis() - startTime;
+            callRecorder.recordFailure(logId, e.getMessage(), duration);
+            log.warn("MCP call tool failed: serverUrl={}, toolName={}, duration={}ms, error={}", serverUrl, toolName, duration, e.getMessage());
             clients.remove(serverUrl);
             throw e;
         }
@@ -52,6 +66,17 @@ public class McpClientManager {
             log.warn("MCP 工具发现失败，移除缓存 client: serverUrl={}", serverUrl, e);
             clients.remove(serverUrl);
             throw e;
+        }
+    }
+
+    private String toJson(Object obj) {
+        if (obj == null) {
+            return "{}";
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(obj);
+        } catch (Exception e) {
+            return obj.toString();
         }
     }
 

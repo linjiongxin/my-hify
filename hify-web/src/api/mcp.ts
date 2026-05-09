@@ -107,3 +107,30 @@ export function bindAgentMcpServers(agentId: number, serverIds: number[]): Promi
 export function unbindAgentMcpServer(agentId: number, serverId: number): Promise<void> {
   return del(`/agent/${agentId}/mcp-servers/${serverId}`)
 }
+
+// ==================== MCP 调用日志 ====================
+
+export interface McpCallLog {
+  id?: number
+  serverUrl: string
+  toolName: string
+  requestJson?: string
+  responseJson?: string
+  status: string
+  durationMs?: number
+  errorMsg?: string
+  traceId?: string
+  createdAt?: string
+}
+
+export function getMcpCallLogs(params: HifyPageParams & { serverUrl?: string; toolName?: string; status?: string }): Promise<PageResult<McpCallLog>> {
+  return get('/mcp/call-logs', {
+    params: {
+      pageNum: params.current,
+      pageSize: params.size,
+      serverUrl: params.serverUrl,
+      toolName: params.toolName,
+      status: params.status,
+    },
+  })
+}

@@ -517,6 +517,36 @@ CREATE TRIGGER update_mcp_tool_updated_at
 CREATE INDEX idx_mcp_tool_server_id ON mcp_tool(server_id);
 
 -- ========================================
+-- MCP 调用日志
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS mcp_call_log (
+    id BIGINT PRIMARY KEY,
+    server_url VARCHAR(256) NOT NULL,
+    tool_name VARCHAR(64) NOT NULL,
+    request_json JSONB,
+    response_json JSONB,
+    status VARCHAR(16) NOT NULL,
+    duration_ms INT,
+    error_msg TEXT,
+    trace_id VARCHAR(32),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_mcp_call_log_updated_at
+    BEFORE UPDATE ON mcp_call_log
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_mcp_call_log_server_url ON mcp_call_log(server_url);
+CREATE INDEX idx_mcp_call_log_tool_name ON mcp_call_log(tool_name);
+CREATE INDEX idx_mcp_call_log_status ON mcp_call_log(status);
+CREATE INDEX idx_mcp_call_log_created_at ON mcp_call_log(created_at);
+
+-- ========================================
 -- 初始数据
 -- ========================================
 

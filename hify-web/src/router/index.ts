@@ -86,6 +86,12 @@ const router = createRouter({
       component: () => import('../views/mcp/McpServerList.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/mcp/call-logs',
+      name: 'mcp-call-logs',
+      component: () => import('../views/mcp/McpCallLogList.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
