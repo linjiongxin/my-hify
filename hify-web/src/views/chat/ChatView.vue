@@ -35,6 +35,7 @@ const messageListRef = ref<HTMLElement>()
 
 onMounted(() => {
   loadSessions()
+  loadAgents()
 })
 
 async function loadSessions() {
@@ -199,6 +200,20 @@ function formatTime(iso?: string): string {
 const currentSessionTitle = computed(() => {
   return currentSession.value?.title || '未选择会话'
 })
+
+// Agent 名称映射表
+const agentsMap = computed(() => {
+  const map = new Map<number, string>()
+  for (const agent of agentList.value) {
+    map.set(agent.id, agent.name)
+  }
+  return map
+})
+
+function getAgentName(agentId?: number): string {
+  if (!agentId) return '未知 Agent'
+  return agentsMap.value.get(agentId) || `Agent #${agentId}`
+}
 </script>
 
 <template>
@@ -224,6 +239,7 @@ const currentSessionTitle = computed(() => {
             <div class="session-info">
               <div class="session-title">{{ session.title }}</div>
               <div class="session-meta">
+                <span class="session-agent">{{ getAgentName(session.agentId) }}</span>
                 <span>{{ session.messageCount }} 条消息</span>
                 <span class="session-time">{{ formatTime(session.lastMessageAt) }}</span>
               </div>
@@ -259,7 +275,10 @@ const currentSessionTitle = computed(() => {
 
       <template v-else>
         <header class="chat-header">
-          <div class="chat-header-title">{{ currentSessionTitle }}</div>
+          <div class="chat-header-left">
+            <div class="chat-header-title">{{ currentSessionTitle }}</div>
+            <div class="chat-header-agent">{{ getAgentName(currentSession?.agentId) }}</div>
+          </div>
           <div class="chat-header-meta">
             <span v-if="sending" class="streaming-indicator">
               <el-icon class="streaming-icon"><Loading /></el-icon>
@@ -441,6 +460,17 @@ const currentSessionTitle = computed(() => {
   margin-top: 2px;
   display: flex;
   gap: var(--space-2);
+  align-items: center;
+}
+
+.session-agent {
+  background-color: var(--color-primary-100);
+  color: var(--color-primary-700);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .session-time {
@@ -510,10 +540,23 @@ const currentSessionTitle = computed(() => {
   background-color: var(--bg-surface);
 }
 
+.chat-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .chat-header-title {
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.chat-header-agent {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.2;
 }
 
 .streaming-indicator {
