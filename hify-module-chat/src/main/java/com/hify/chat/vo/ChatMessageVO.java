@@ -24,5 +24,6 @@ public class ChatMessageVO implements Serializable {
     private Integer inputTokens;
     private Integer outputTokens;
     private String model;
+    private String traceId;
     private LocalDateTime createdAt;
 }

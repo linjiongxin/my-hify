@@ -8,6 +8,7 @@ import com.hify.agent.api.dto.AgentToolDTO;
 import com.hify.chat.entity.ChatMessage;
 import com.hify.rag.api.AgentKnowledgeBaseApi;
 import com.hify.rag.api.RagSearchApi;
+import com.hify.rag.service.RagRetrievalRecorder;
 import com.hify.rag.vo.AgentKnowledgeBaseVO;
 import com.hify.rag.vo.RagSearchResult;
 import com.hify.chat.entity.ChatSession;
@@ -17,6 +18,7 @@ import com.hify.chat.vo.ChatMessageVO;
 import com.hify.common.core.enums.ResultCode;
 import com.hify.common.core.exception.BizException;
 import com.hify.common.core.util.LlmOutputCleaner;
+import com.hify.common.web.filter.TraceIdFilter;
 import com.hify.mcp.api.McpApi;
 import com.hify.model.api.LlmGatewayApi;
 import com.hify.model.api.dto.LlmChatRequest;
@@ -31,6 +33,7 @@ import com.hify.workflow.api.dto.WorkflowInstanceDTO;
 import com.hify.workflow.api.dto.WorkflowStartRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -62,6 +65,7 @@ public class ChatMessageService {
     private final AgentApi agentApi;
     private final AgentKnowledgeBaseApi agentKnowledgeBaseApi;
     private final RagSearchApi ragSearchApi;
+    private final RagRetrievalRecorder ragRetrievalRecorder;
     private final WorkflowApi workflowApi;
     private final McpApi mcpApi;
     private final StringRedisTemplate stringRedisTemplate;
@@ -297,6 +301,7 @@ public class ChatMessageService {
         userMsg.setRole("user");
         userMsg.setContent(message);
         userMsg.setStatus("completed");
+        userMsg.setTraceId(MDC.get(TraceIdFilter.TRACE_ID_MDC_KEY));
         chatMessageMapper.insert(userMsg);
         return userMsg;
     }
@@ -309,6 +314,7 @@ public class ChatMessageService {
         msg.setContent("");
         msg.setStatus("streaming");
         msg.setModel(modelId);
+        msg.setTraceId(MDC.get(TraceIdFilter.TRACE_ID_MDC_KEY));
         chatMessageMapper.insert(msg);
         return msg;
     }
@@ -431,6 +437,8 @@ public class ChatMessageService {
         StringBuilder ragContext = new StringBuilder();
         int totalResults = 0;
         for (AgentKnowledgeBaseVO binding : bindings) {
+            Long logId = ragRetrievalRecorder.recordStart(userQuery, binding.getKbId());
+            long startMs = System.currentTimeMillis();
             List<RagSearchResult> results = ragSearchApi.search(
                     binding.getKbId(),
                     userQuery,
@@ -438,6 +446,8 @@ public class ChatMessageService {
                     binding.getSimilarityThreshold() != null
                             ? binding.getSimilarityThreshold().floatValue() : 0.5f
             );
+            long durationMs = System.currentTimeMillis() - startMs;
+            ragRetrievalRecorder.recordSuccess(logId, results.size(), results, durationMs);
             if (!results.isEmpty()) {
                 totalResults += results.size();
                 for (int i = 0; i < results.size(); i++) {

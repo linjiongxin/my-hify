@@ -24,6 +24,7 @@ export interface ChatMessage {
   inputTokens?: number
   outputTokens?: number
   model?: string
+  traceId?: string
   createdAt: string
 }
 
@@ -50,6 +51,27 @@ export function archiveSession(sessionId: number): Promise<void> {
 
 export function deleteSession(sessionId: number): Promise<void> {
   return del(`/chat/session/${sessionId}`)
+}
+
+export interface ChatTraceEvent {
+  type: 'user_message' | 'rag' | 'workflow' | 'mcp' | 'llm_reply'
+  title: string
+  time: string
+  durationMs?: number
+  status?: string
+  details: Record<string, unknown>
+}
+
+export interface ChatTrace {
+  traceId: string
+  userMessage: string
+  totalDurationMs: number
+  agentName: string
+  events: ChatTraceEvent[]
+}
+
+export function getChatTrace(traceId: string): Promise<ChatTrace> {
+  return get(`/chat/trace`, { params: { traceId } })
 }
 
 export function streamChat(

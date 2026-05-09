@@ -3,7 +3,9 @@ package com.hify.workflow.engine;
 import com.hify.workflow.entity.WorkflowNode;
 import com.hify.workflow.entity.WorkflowNodeExecution;
 import com.hify.workflow.mapper.WorkflowNodeExecutionMapper;
+import com.hify.common.web.filter.TraceIdFilter;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -38,6 +40,7 @@ public class NodeExecutionRecorder {
         execution.setStatus("running");
         execution.setInputJson(inputJson);
         execution.setStartedAt(LocalDateTime.now());
+        execution.setTraceId(MDC.get(TraceIdFilter.TRACE_ID_MDC_KEY));
         mapper.insert(execution);
         return execution.getId();
     }

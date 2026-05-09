@@ -31,6 +31,9 @@ public class RagContextInjector {
     @Autowired
     private RagContextBuilder ragContextBuilder;
 
+    @Autowired
+    private RagRetrievalRecorder ragRetrievalRecorder;
+
     /**
      * 为指定 Agent 获取 RAG 上下文字符串
      *
@@ -54,12 +57,16 @@ public class RagContextInjector {
             // 2. 对每个知识库检索
             List<RagSearchResult> allResults = new ArrayList<>();
             for (AgentKnowledgeBaseVO binding : bindings) {
+                Long logId = ragRetrievalRecorder.recordStart(userMessage, binding.getKbId());
+                long startMs = System.currentTimeMillis();
                 List<RagSearchResult> results = ragSearchService.search(
                         binding.getKbId(),
                         userMessage,
                         binding.getTopK(),
                         binding.getSimilarityThreshold().floatValue()
                 );
+                long durationMs = System.currentTimeMillis() - startMs;
+                ragRetrievalRecorder.recordSuccess(logId, results.size(), results, durationMs);
                 allResults.addAll(results);
             }
 

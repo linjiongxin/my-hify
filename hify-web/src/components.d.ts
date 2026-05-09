@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     ApiCallNodeConfig: typeof import('./components/workflow/node-configs/ApiCallNodeConfig.vue')['default']
     ApprovalNodeConfig: typeof import('./components/workflow/node-configs/ApprovalNodeConfig.vue')['default']
+    ChatTraceDrawer: typeof import('./components/chat/ChatTraceDrawer.vue')['default']
     ConditionNodeConfig: typeof import('./components/workflow/node-configs/ConditionNodeConfig.vue')['default']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']

@@ -1,4 +1,4 @@
-package com.hify.workflow.entity;
+package com.hify.chat.entity.trace;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -10,62 +10,26 @@ import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
 
 /**
- * 工作流节点执行记录
+ * 工作流节点执行记录（chat 模块只读视图）
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("workflow_node_execution")
-public class WorkflowNodeExecution extends BaseEntity {
+public class TraceWorkflowNodeExecution extends BaseEntity {
 
-    /**
-     * 实例 ID
-     */
     private Long executionId;
-
-    /**
-     * 节点 ID
-     */
     private String nodeId;
-
-    /**
-     * 节点类型
-     */
     private String nodeType;
-
-    /**
-     * 执行状态：running / completed / failed
-     */
     private String status;
 
-    /**
-     * 输入参数（JSON）
-     */
     @TableField(typeHandler = JsonbStringTypeHandler.class)
     private String inputJson;
 
-    /**
-     * 输出结果（JSON）
-     */
     @TableField(typeHandler = JsonbStringTypeHandler.class)
     private String outputJson;
 
-    /**
-     * 错误信息
-     */
     private String errorMsg;
-
-    /**
-     * 开始时间
-     */
     private LocalDateTime startedAt;
-
-    /**
-     * 结束时间
-     */
     private LocalDateTime endedAt;
-
-    /**
-     * 链路追踪 ID
-     */
     private String traceId;
 }

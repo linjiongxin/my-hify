@@ -72,4 +72,9 @@ public class ChatMessage extends BaseEntity {
      */
     @TableField(typeHandler = JsonbStringTypeHandler.class)
     private String metadata;
+
+    /**
+     * 链路追踪 ID
+     */
+    private String traceId;
 }

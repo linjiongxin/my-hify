@@ -165,7 +165,25 @@
       "Bash(pkill -9 -f \"spring-boot:run\")",
       "Bash(echo \"PID: $!\")",
       "Bash(mkdir -p /tmp/hify-rag)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(kill -0 90063)",
+      "Bash(kill -0 90040)",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && cat {}')",
+      "Bash(kill 90063 90040)",
+      "Bash(echo \"Server starting, PID $!\" sleep 15 curl -s http://localhost:8080/api/actuator/health)",
+      "Bash(kill 94165)",
+      "Bash(echo \"Started with PID $!\" sleep 5 curl -s http://localhost:8080/api/actuator/health)",
+      "Bash(echo \"Started with PID $!\" sleep 6 curl -s http://localhost:8080/api/actuator/health)",
+      "Bash(git worktree *)",
+      "Bash(grep *)",
+      "Bash(/Users/linjiongxin/IdeaProjects/my-hify/scripts/test-workflow.sh *)",
+      "Bash(git *)",
+      "Read(//Users/linjiongxin/.claude/skills/writing-plans/**)",
+      "Bash(npm ls *)",
+      "Bash(nohup mvn spring-boot:run -Dspring-boot.run.profiles=local)",
+      "Bash(echo \"Server starting, PID: $!\")",
+      "Bash(xargs sed -n '170,200p')",
+      "Bash(javap -cp /Users/linjiongxin/.m2/repository/io/modelcontextprotocol/sdk/mcp-core/0.18.0/mcp-core-0.18.0.jar 'io.modelcontextprotocol.spec.McpSchema$JsonSchema')"
     ]
   }
 }

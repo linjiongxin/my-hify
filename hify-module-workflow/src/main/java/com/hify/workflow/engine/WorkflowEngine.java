@@ -9,6 +9,7 @@ import com.hify.workflow.engine.context.ExecutionContext;
 import com.hify.workflow.engine.executor.NodeExecutor;
 import com.hify.workflow.engine.executor.NodeExecutorRegistry;
 import com.hify.common.core.exception.BizException;
+import com.hify.common.web.filter.TraceIdFilter;
 import com.hify.workflow.engine.util.PlaceholderUtils;
 import com.hify.workflow.entity.*;
 import com.hify.workflow.mapper.*;
@@ -16,6 +17,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -97,10 +99,10 @@ public class WorkflowEngine {
             log.info("Resuming workflow instance: id={}, workflowId={}, currentNode={}",
                     instance.getId(), instance.getWorkflowId(), instance.getCurrentNodeId());
 
-            // 恢复执行，从当前节点继续
+            // 恢复执行，从当前节点继续（传递 traceId）
             String currentNodeId = instance.getCurrentNodeId();
             if (currentNodeId != null) {
-                executeAsync(instance.getId(), currentNodeId);
+                executeAsync(instance.getId(), currentNodeId, instance.getTraceId());
             }
         }
 
@@ -169,6 +171,7 @@ public class WorkflowEngine {
         instance.setStatus("RUNNING");
         instance.setCurrentNodeId(startNodeId);
         instance.setStartedAt(LocalDateTime.now());
+        instance.setTraceId(MDC.get(TraceIdFilter.TRACE_ID_MDC_KEY));
 
         // 初始化上下文
         ExecutionContext context = new ExecutionContext(instance.getId(), inputs);
@@ -179,8 +182,8 @@ public class WorkflowEngine {
         log.info("Workflow instance created: id={}, workflowId={}, startNode={}",
                 instance.getId(), workflowId, startNodeId);
 
-        // 异步执行
-        executeAsync(instance.getId(), startNodeId);
+        // 异步执行（传递 traceId）
+        executeAsync(instance.getId(), startNodeId, MDC.get(TraceIdFilter.TRACE_ID_MDC_KEY));
 
         return String.valueOf(instance.getId());
     }
@@ -193,7 +196,23 @@ public class WorkflowEngine {
      */
     @Async("commonExecutor")
     public void executeAsync(Long instanceId, String nodeId) {
-        log.info("Executing node: instanceId={}, nodeId={}", instanceId, nodeId);
+        executeAsync(instanceId, nodeId, null);
+    }
+
+    /**
+     * 异步执行节点（带 traceId 传递）
+     *
+     * @param instanceId 实例 ID
+     * @param nodeId      节点 ID
+     * @param traceId     链路追踪 ID
+     */
+    @Async("commonExecutor")
+    public void executeAsync(Long instanceId, String nodeId, String traceId) {
+        if (traceId != null) {
+            MDC.put("traceId", traceId);
+        }
+        try {
+            log.info("Executing node: instanceId={}, nodeId={}", instanceId, nodeId);
 
         WorkflowInstance instance = workflowInstanceMapper.selectById(instanceId);
         if (instance == null) {
@@ -280,8 +299,12 @@ public class WorkflowEngine {
             instance.setCurrentNodeId(nextNodeId);
             workflowInstanceMapper.updateById(instance);
 
-            // 异步执行下一节点
-            executeAsync(instanceId, nextNodeId);
+            // 异步执行下一节点（传递 traceId）
+            String currentTraceId = MDC.get(TraceIdFilter.TRACE_ID_MDC_KEY);
+            executeAsync(instanceId, nextNodeId, currentTraceId);
+        }
+        } finally {
+            MDC.remove("traceId");
         }
     }
 
@@ -431,7 +454,7 @@ public class WorkflowEngine {
                                     instance.getId(), node.getNodeId(), errorBranch);
                             instance.setCurrentNodeId(errorBranch);
                             workflowInstanceMapper.updateById(instance);
-                            executeAsync(instance.getId(), errorBranch);
+                            executeAsync(instance.getId(), errorBranch, instance.getTraceId());
                             return;
                         }
                     }
@@ -557,7 +580,7 @@ public class WorkflowEngine {
         } else {
             instance.setCurrentNodeId(nextNodeId);
             workflowInstanceMapper.updateById(instance);
-            executeAsync(instanceId, nextNodeId);
+            executeAsync(instanceId, nextNodeId, instance.getTraceId());
         }
     }
 

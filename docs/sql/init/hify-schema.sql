@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS chat_message (
     output_tokens INT,
     model VARCHAR(100),
     metadata JSONB,
+    trace_id VARCHAR(32),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -266,6 +267,7 @@ CREATE TRIGGER update_chat_message_updated_at
 CREATE INDEX idx_chat_message_session_id ON chat_message(session_id);
 CREATE INDEX idx_chat_message_seq ON chat_message(session_id, seq);
 CREATE INDEX idx_chat_message_created_at ON chat_message(created_at);
+CREATE INDEX idx_chat_message_trace_id ON chat_message(trace_id);
 CREATE INDEX gin_chat_message_metadata ON chat_message USING GIN (metadata);
 
 -- ========================================
@@ -353,6 +355,31 @@ CREATE INDEX idx_document_chunk_meta ON document_chunk USING gin (meta_json);
 CREATE INDEX vec_document_chunk_embedding ON document_chunk USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- ========================================
+-- RAG 检索日志
+-- ========================================
+
+CREATE TABLE IF NOT EXISTS rag_retrieval_log (
+    id BIGSERIAL PRIMARY KEY,
+    kb_id BIGINT,
+    query TEXT,
+    result_count INT,
+    top_chunks JSONB,
+    duration_ms INT,
+    trace_id VARCHAR(32),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by BIGINT,
+    updated_by BIGINT
+);
+
+CREATE TRIGGER update_rag_retrieval_log_updated_at
+    BEFORE UPDATE ON rag_retrieval_log
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_rag_log_trace_id ON rag_retrieval_log(trace_id);
+
+-- ========================================
 -- 工作流模块（前缀: workflow_）
 -- ========================================
 
@@ -425,6 +452,7 @@ CREATE TABLE IF NOT EXISTS workflow_instance (
     current_node_id VARCHAR(64),
     context JSONB,
     error_msg TEXT,
+    trace_id VARCHAR(32),
     started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     finished_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -441,6 +469,7 @@ CREATE TRIGGER update_workflow_instance_updated_at
 CREATE INDEX idx_workflow_instance_workflow_id ON workflow_instance(workflow_id);
 CREATE INDEX idx_workflow_instance_status ON workflow_instance(status);
 CREATE INDEX idx_workflow_instance_started_at ON workflow_instance(started_at);
+CREATE INDEX idx_wf_instance_trace_id ON workflow_instance(trace_id);
 
 CREATE TABLE IF NOT EXISTS workflow_node_execution (
     id BIGINT PRIMARY KEY,
@@ -451,6 +480,7 @@ CREATE TABLE IF NOT EXISTS workflow_node_execution (
     input_json JSONB,
     output_json JSONB,
     error_msg TEXT,
+    trace_id VARCHAR(32),
     started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ended_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -466,6 +496,7 @@ CREATE TRIGGER update_workflow_node_execution_updated_at
 
 CREATE INDEX idx_workflow_node_execution_execution_id ON workflow_node_execution(execution_id);
 CREATE INDEX idx_workflow_node_execution_node_id ON workflow_node_execution(node_id);
+CREATE INDEX idx_wf_node_exec_trace_id ON workflow_node_execution(trace_id);
 
 -- ========================================
 -- MCP 模块（前缀: mcp_）

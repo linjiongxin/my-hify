@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted } from 'vue'
-import { Plus, ChatRound, Delete, Loading, Promotion } from '@element-plus/icons-vue'
+import { Plus, ChatRound, Delete, Loading, Promotion, Link } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listSessions, listMessages, createSession, deleteSession, streamChat } from '@/api/chat'
 import { getAgentPage } from '@/api/agent'
 import type { ChatSession, ChatMessage } from '@/api/chat'
 import type { Agent } from '@/api/agent'
 import type { PageResult } from '@/components/HifyTable.vue'
+import ChatTraceDrawer from '@/components/chat/ChatTraceDrawer.vue'
 
 interface DisplayMessage {
   id?: number
@@ -15,6 +16,7 @@ interface DisplayMessage {
   status?: string
   isStreaming?: boolean
   model?: string
+  traceId?: string
   createdAt?: string
 }
 
@@ -30,6 +32,8 @@ const agentList = ref<Agent[]>([])
 const agentLoading = ref(false)
 const selectedAgentId = ref<number | null>(null)
 const abortController = ref<(() => void) | null>(null)
+const traceDrawerVisible = ref(false)
+const selectedTraceId = ref('')
 
 const messageListRef = ref<HTMLElement>()
 
@@ -59,6 +63,7 @@ async function selectSession(session: ChatSession) {
       content: m.content,
       status: m.status,
       model: m.model,
+      traceId: m.traceId,
       createdAt: m.createdAt,
     }))
     scrollToBottom()
@@ -214,6 +219,11 @@ function getAgentName(agentId?: number): string {
   if (!agentId) return '未知 Agent'
   return agentsMap.value.get(agentId) || `Agent #${agentId}`
 }
+
+function openTraceDrawer(traceId: string) {
+  selectedTraceId.value = traceId
+  traceDrawerVisible.value = true
+}
 </script>
 
 <template>
@@ -311,6 +321,15 @@ function getAgentName(agentId?: number): string {
                 <span class="message-time">{{ formatTime(msg.createdAt) }}</span>
                 <span v-if="msg.model" class="message-model">{{ msg.model }}</span>
                 <el-tag v-if="msg.status === 'error'" type="danger" size="small">错误</el-tag>
+                <el-button
+                  v-if="msg.traceId && msg.status === 'completed'"
+                  :icon="Link"
+                  text
+                  size="small"
+                  @click="openTraceDrawer(msg.traceId)"
+                >
+                  链路
+                </el-button>
               </div>
             </div>
           </div>
@@ -341,6 +360,9 @@ function getAgentName(agentId?: number): string {
         </footer>
       </template>
     </main>
+
+    <!-- 链路追踪 Drawer -->
+    <ChatTraceDrawer v-model:visible="traceDrawerVisible" :trace-id="selectedTraceId" />
 
     <!-- 新建会话对话框 -->
     <el-dialog v-model="newSessionDialogVisible" title="选择 Agent" width="480px">
