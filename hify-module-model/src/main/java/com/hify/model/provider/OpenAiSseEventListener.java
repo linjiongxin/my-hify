@@ -33,6 +33,9 @@ public class OpenAiSseEventListener extends EventSourceListener {
     // 累积 tool_calls（OpenAI 增量 SSE 格式会分多个 chunk 下发）
     private final java.util.List<LlmToolCall> accumulatedToolCalls = new java.util.ArrayList<>();
 
+    // 防止 onEvent 和 onFailure 同时触发 callback 导致重复处理
+    private final java.util.concurrent.atomic.AtomicBoolean finished = new java.util.concurrent.atomic.AtomicBoolean(false);
+
     public OpenAiSseEventListener(Consumer<LlmStreamChunk> callback, ObjectMapper objectMapper) {
         this.callback = callback;
         this.objectMapper = objectMapper;
@@ -40,8 +43,13 @@ public class OpenAiSseEventListener extends EventSourceListener {
 
     @Override
     public void onEvent(EventSource eventSource, String id, String type, String data) {
+        if (finished.get()) {
+            return;
+        }
         if ("[DONE]".equals(data)) {
-            callback.accept(LlmStreamChunk.builder().finish(true).build());
+            if (finished.compareAndSet(false, true)) {
+                callback.accept(LlmStreamChunk.builder().finish(true).build());
+            }
             return;
         }
         try {
@@ -53,9 +61,11 @@ public class OpenAiSseEventListener extends EventSourceListener {
             if (Boolean.TRUE.equals(chunk.getFinish()) && !accumulatedToolCalls.isEmpty()) {
                 chunk.setToolCalls(new java.util.ArrayList<>(accumulatedToolCalls));
             }
-            callback.accept(chunk);
-            if (Boolean.TRUE.equals(chunk.getFinish())) {
+            if (Boolean.TRUE.equals(chunk.getFinish()) && finished.compareAndSet(false, true)) {
+                callback.accept(chunk);
                 eventSource.cancel();
+            } else if (!Boolean.TRUE.equals(chunk.getFinish())) {
+                callback.accept(chunk);
             }
         } catch (Exception e) {
             log.warn("解析 SSE 流数据失败: {}", data, e);
@@ -97,6 +107,9 @@ public class OpenAiSseEventListener extends EventSourceListener {
 
     @Override
     public void onFailure(EventSource eventSource, Throwable t, Response response) {
+        if (!finished.compareAndSet(false, true)) {
+            return;
+        }
         String errorMsg = "SSE 流连接异常";
         if (response != null) {
             errorMsg += " (HTTP " + response.code() + ")";

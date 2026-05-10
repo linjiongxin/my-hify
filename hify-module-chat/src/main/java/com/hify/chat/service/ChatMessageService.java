@@ -126,15 +126,72 @@ public class ChatMessageService {
     }
 
     /**
-     * 处理带工具的对话：先非流式探测 tool_calls，再流式生成最终回复
+     * 处理带工具的对话：先流式探测 tool_calls，无工具时保持打字机效果，
+     * 有工具时中断流式、执行工具、第二轮非流式生成最终回复
      */
     private void handleChatWithTools(AgentDTO agent, List<LlmMessage> context, ChatMessage assistantMsg,
                                      SseEmitter emitter, long startTime, ChatSession session, Long sessionId,
                                      LlmChatRequest request) throws Exception {
-        LlmChatResponse probe = llmGatewayApi.chat(agent.getModelId(), request);
+        AtomicReference<StringBuilder> contentRef = new AtomicReference<>(new StringBuilder());
+        AtomicBoolean inThinkBlock = new AtomicBoolean(false);
+        AtomicReference<List<LlmToolCall>> toolCallsRef = new AtomicReference<>();
+        AtomicBoolean hasToolCalls = new AtomicBoolean(false);
+        AtomicBoolean hasError = new AtomicBoolean(false);
+        AtomicReference<LlmStreamChunk> lastChunkRef = new AtomicReference<>();
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
 
-        if (probe.getToolCalls() != null && !probe.getToolCalls().isEmpty()) {
-            List<LlmToolCall> toolCalls = probe.getToolCalls();
+        llmGatewayApi.streamChat(agent.getModelId(), request, chunk -> {
+            try {
+                if (chunk.getError() != null && !chunk.getError().isEmpty()) {
+                    log.error("LLM 流式返回错误, sessionId={}, error={}", sessionId, chunk.getError());
+                    hasError.set(true);
+                    handleLlmError(assistantMsg, emitter, new RuntimeException(chunk.getError()));
+                    return;
+                }
+
+                if (chunk.getToolCalls() != null && !chunk.getToolCalls().isEmpty()) {
+                    toolCallsRef.set(chunk.getToolCalls());
+                }
+
+                String text = chunk.getContent();
+                if (text != null && !text.isEmpty()) {
+                    String filtered = filterStreamingThink(text, inThinkBlock);
+                    contentRef.get().append(text);
+                    if (filtered != null && !filtered.isEmpty()) {
+                        emitter.send(SseEmitter.event()
+                                .name("message")
+                                .data(Map.of("content", filtered, "timestamp", System.currentTimeMillis())));
+                    }
+                }
+
+                if (Boolean.TRUE.equals(chunk.getFinish())) {
+                    lastChunkRef.set(chunk);
+                    if ("tool_calls".equals(chunk.getFinishReason())) {
+                        hasToolCalls.set(true);
+                    }
+                    latch.countDown();
+                }
+            } catch (Exception e) {
+                log.error("SSE 发送失败, sessionId={}", sessionId, e);
+                hasError.set(true);
+                emitter.completeWithError(e);
+                latch.countDown();
+            }
+        });
+
+        // 等待流式探测结束（最多 120 秒，与 LLM 最长响应时间对齐）
+        if (!latch.await(120, java.util.concurrent.TimeUnit.SECONDS)) {
+            log.warn("流式探测超时, sessionId={}", sessionId);
+            handleLlmError(assistantMsg, emitter, new RuntimeException("流式响应超时"));
+            return;
+        }
+
+        if (hasError.get()) {
+            return;
+        }
+
+        if (hasToolCalls.get() && toolCallsRef.get() != null) {
+            List<LlmToolCall> toolCalls = toolCallsRef.get();
             emitter.send(SseEmitter.event()
                     .name("tool_calling")
                     .data(Map.of("tools", toolCalls.stream().map(LlmToolCall::getName).toList())));
@@ -167,17 +224,13 @@ public class ChatMessageService {
             cacheMessages(sessionId);
             sendDoneEvent(emitter, assistantMsg.getId());
         } else {
-            // 无需调用工具，直接返回非流式结果并模拟流式推送
-            String content = probe.getContent() != null ? probe.getContent() : "";
-            String cleaned = LlmOutputCleaner.stripThinking(content);
-            if (!cleaned.isEmpty()) {
-                emitter.send(SseEmitter.event()
-                        .name("message")
-                        .data(Map.of("content", cleaned, "timestamp", System.currentTimeMillis())));
-            }
-            finalizeAssistantMessage(assistantMsg, cleaned,
-                    LlmStreamChunk.builder().finish(true).finishReason("stop").build(), startTime);
-            updateSessionAfterChat(session, cleaned);
+            // 无工具调用：流式已逐 chunk 推送完毕，直接收尾
+            String fullContent = LlmOutputCleaner.stripThinking(contentRef.get().toString());
+            finalizeAssistantMessage(assistantMsg, fullContent,
+                    lastChunkRef.get() != null ? lastChunkRef.get()
+                            : LlmStreamChunk.builder().finish(true).finishReason("stop").build(),
+                    startTime);
+            updateSessionAfterChat(session, fullContent);
             cacheMessages(sessionId);
             sendDoneEvent(emitter, assistantMsg.getId());
         }
@@ -198,6 +251,7 @@ public class ChatMessageService {
         AtomicBoolean inThinkBlock = new AtomicBoolean(false);
         AtomicReference<List<LlmToolCall>> toolCallsRef = new AtomicReference<>();
         AtomicBoolean hasToolCalls = new AtomicBoolean(false);
+        AtomicBoolean hasError = new AtomicBoolean(false);
         AtomicReference<LlmStreamChunk> lastChunkRef = new AtomicReference<>();
 
         LlmChatRequest request = buildLlmChatRequest(agent, context, skipTools);
@@ -205,6 +259,7 @@ public class ChatMessageService {
             try {
                 if (chunk.getError() != null && !chunk.getError().isEmpty()) {
                     log.error("LLM 流式返回错误, sessionId={}, error={}", sessionId, chunk.getError());
+                    hasError.set(true);
                     handleLlmError(assistantMsg, emitter, new RuntimeException(chunk.getError()));
                     return;
                 }
@@ -238,9 +293,14 @@ public class ChatMessageService {
                 }
             } catch (Exception e) {
                 log.error("SSE 发送失败, sessionId={}", sessionId, e);
+                hasError.set(true);
                 emitter.completeWithError(e);
             }
         });
+
+        if (hasError.get()) {
+            return;
+        }
 
         if (hasToolCalls.get() && toolCallsRef.get() != null) {
             List<LlmToolCall> toolCalls = toolCallsRef.get();
