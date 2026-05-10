@@ -21,62 +21,22 @@ metadata:
     env: production
 
 ---
-# ConfigMap - 非敏感配置
+# ConfigMap - 非敏感配置（仅包含环境差异配置）
+# 其余配置由 application.yml + application-prod.yml 提供
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: hify-config
   namespace: hify
 data:
-  # 应用配置
-  application.yml: |
-    server:
-      port: 8080
-      tomcat:
-        threads:
-          max: 200
-          min-spare: 10
-        max-connections: 8192
-
-    spring:
-      datasource:
-        url: jdbc:postgresql://postgres:5432/hify
-        username: hify
-        driver-class-name: org.postgresql.Driver
-        hikari:
-          maximum-pool-size: 10
-          minimum-idle: 2
-          connection-timeout: 20000
-      redis:
-        host: redis
-        port: 6379
-        timeout: 5000
-        lettuce:
-          pool:
-            max-active: 20
-            max-idle: 10
-
-    hify:
-      llm:
-        providers:
-          openai:
-            base-url: https://api.openai.com/v1
-            max-concurrent-requests: 20
-            connect-timeout: 5s
-            read-timeout: 60s
-            total-timeout: 90s
-          deepseek:
-            base-url: https://api.deepseek.com/v1
-            max-concurrent-requests: 10
-            connect-timeout: 5s
-            read-timeout: 60s
-            total-timeout: 90s
-          ollama:
-            base-url: http://ollama-service:11434
-            max-concurrent-requests: 5
-            connect-timeout: 2s
-            read-timeout: 300s
-            total-timeout: 600s
+  # 仅保留数据源和 Redis 的环境差异配置
+  # 生产环境通过 SPRING_PROFILES_ACTIVE=prod 激活 application-prod.yml
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "hify"
+  DB_USERNAME: "hify"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
 
 ---
 # Secret - 敏感信息（部署时需替换）
@@ -132,7 +92,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:15-alpine
+          image: pgvector/pgvector:pg15
           ports:
             - containerPort: 5432
               name: postgres
@@ -296,20 +256,50 @@ spec:
     spec:
       containers:
         - name: hify-server
-          image: hify/hify-server:latest
+          image: ghcr.io/linjiongxin/my-hify/hify-server:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
               name: http
           env:
             - name: SPRING_PROFILES_ACTIVE
-              value: production
-            - name: SPRING_DATASOURCE_PASSWORD
+              value: prod
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: hify-config
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: hify-config
+                  key: DB_PORT
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: hify-config
+                  key: DB_NAME
+            - name: DB_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: hify-config
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: hify-secret
                   key: DB_PASSWORD
-            - name: SPRING_REDIS_PASSWORD
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: hify-config
+                  key: REDIS_HOST
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: hify-config
+                  key: REDIS_PORT
+            - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: hify-secret
@@ -331,9 +321,6 @@ spec:
                   key: JWT_SECRET
             - name: JAVA_OPTS
               value: "-Xmx512m -Xms256m -XX:+UseG1GC"
-          volumeMounts:
-            - name: config
-              mountPath: /app/config
           resources:
             requests:
               cpu: 250m
@@ -343,23 +330,16 @@ spec:
               memory: 768Mi
           livenessProbe:
             httpGet:
-              path: /actuator/health/liveness
+              path: /api/actuator/health/liveness
               port: 8080
             initialDelaySeconds: 60
             periodSeconds: 30
           readinessProbe:
             httpGet:
-              path: /actuator/health/readiness
+              path: /api/actuator/health/readiness
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
-      volumes:
-        - name: config
-          configMap:
-            name: hify-config
-            items:
-              - key: application.yml
-                path: application.yml
 
 ---
 # Hify 后端 Service
@@ -402,7 +382,7 @@ spec:
     spec:
       containers:
         - name: nginx
-          image: hify/hify-web:latest
+          image: ghcr.io/linjiongxin/my-hify/hify-web:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
@@ -529,7 +509,7 @@ spec:
         spec:
           containers:
             - name: backup
-              image: postgres:15-alpine
+              image: pgvector/pgvector:pg15
               command:
                 - /bin/sh
                 - -c

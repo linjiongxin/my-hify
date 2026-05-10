@@ -1,0 +1,42 @@
+# Hify 后端 Dockerfile
+# 多阶段构建：Maven 编译 → JRE 运行
+
+# 阶段一：构建
+FROM maven:3.9-eclipse-temurin-17-alpine AS builder
+WORKDIR /build
+
+# 先复制 pom.xml 利用 Docker 缓存
+COPY pom.xml .
+COPY hify-common ./hify-common
+COPY hify-module-model ./hify-module-model
+COPY hify-module-agent ./hify-module-agent
+COPY hify-module-chat ./hify-module-chat
+COPY hify-module-rag ./hify-module-rag
+COPY hify-module-workflow ./hify-module-workflow
+COPY hify-module-mcp ./hify-module-mcp
+COPY hify-server ./hify-server
+
+# 构建 hify-server 及其依赖模块
+RUN mvn clean package -pl hify-server -am -DskipTests
+
+# 阶段二：运行
+FROM eclipse-temurin:17-jre-alpine
+
+# 创建非 root 用户
+RUN addgroup -S hify && adduser -S hify -G hify
+
+WORKDIR /app
+
+# 复制构建产物
+COPY --from=builder /build/hify-server/target/hify-server-*.jar app.jar
+
+# 创建日志目录并设置权限
+RUN mkdir -p /var/log/hify && chown -R hify:hify /app /var/log/hify
+
+USER hify
+
+EXPOSE 8080
+
+ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC"
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
